@@ -1,0 +1,8 @@
+config/.env
+logs/*.log
+reports/*.xlsx
+storage/*.db
+*.db
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,30 @@
+sites:
+  - id: c8888
+    name: "8888.bg"
+    url: "https://8888.bg/bonuses/"
+    access: public
+    render: js
+    selector: ".bonus-cardbox"
+
+  - id: inbet
+    name: "Inbet"
+    url: "https://inbet.com/ingame/promotions"
+    access: public
+    render: js
+    selector: ".prm-lobby-card"
+
+  - id: winbet
+    name: "Winbet"
+    url: "https://winbet.bg/promotions"
+    access: public
+    render: js
+    selector: ".prm-lobby-card"
+    # Начален welcome-бонус ("НАЧАЛЕН ALL INCLUSIVE БОНУС") виден публично,
+    # без логина — авторизация не требуется для мониторинга этой страницы.
+
+  - id: palmsbet
+    name: "Palms Bet"
+    url: "https://www.palmsbet.com/bg/promotions/"
+    access: public
+    render: js
+    selector: '[role="listbox"][aria-label="Всички"] [role="option"]'
