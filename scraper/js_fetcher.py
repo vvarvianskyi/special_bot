@@ -35,7 +35,7 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            html = _render_page(url, cookies)
+            html = _render_page(url, cookies, selector)
             break
         except Exception as exc:  # таймауты, навигационные ошибки Playwright
             last_error = str(exc)
@@ -59,7 +59,7 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
     return FetchResult(status="ok", text=text)
 
 
-def _render_page(url: str, cookies: Optional[Dict[str, str]]) -> str:
+def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str) -> str:
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
@@ -78,9 +78,14 @@ def _render_page(url: str, cookies: Optional[Dict[str, str]]) -> str:
         page = context.new_page()
         # "networkidle" не подходит для сайтов live-ставок/казино: у них почти
         # всегда идёт фоновый поллинг коэффициентов, и networkidle просто никогда
-        # не наступает. Ждём загрузки DOM и даём SPA время дорендерить промо-блок.
+        # не наступает. Ждём загрузки DOM, а затем — конкретно промо-блок: на
+        # некоторых сайтах (palmsbet.bg) он дорендеривается заметно дольше
+        # фиксированных 2-3 секунд, из-за чего блок не успевал подгрузиться.
         page.goto(url, timeout=REQUEST_TIMEOUT * 1000, wait_until="domcontentloaded")
-        page.wait_for_timeout(3000)
+        try:
+            page.wait_for_selector(selector, timeout=15000)
+        except Exception:
+            logger.debug("Селектор '%s' не появился за 15с — парсим то, что успело отрендериться", selector)
         html = page.content()
         browser.close()
         return html
