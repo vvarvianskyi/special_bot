@@ -42,6 +42,7 @@ class FetchResult:
     status: str  # "ok" | "no_selector_match" | "blocked_by_antibot" | "robots_disallowed" | "error"
     text: Optional[str] = None
     error: Optional[str] = None
+    screenshot: Optional[bytes] = None  # PNG промо-блока, только для render: js (см. js_fetcher.py)
 
 
 def is_allowed_by_robots(url: str, user_agent: str = USER_AGENT) -> bool:

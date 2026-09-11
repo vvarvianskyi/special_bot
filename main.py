@@ -94,6 +94,7 @@ def _maybe_send_email(rows, report_path: Path) -> None:
 
 def run_once(stagger_seconds: int) -> None:
     from notify.excel_report import build_report
+    from notify.html_report import build_html_report
     from scheduler.runner import run_all
 
     rows = run_all(stagger_seconds=stagger_seconds)
@@ -101,6 +102,10 @@ def run_once(stagger_seconds: int) -> None:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     report_path = REPORTS_DIR / f"promo_report_{datetime.now():%Y-%m-%d_%H-%M-%S}.xlsx"
     build_report(rows, report_path)
+
+    html_path = REPORTS_DIR / "latest.html"
+    build_html_report(rows, html_path)
+    logger.info("HTML-отчёт обновлён: %s", html_path)
 
     try:
         _maybe_send_email(rows, report_path)

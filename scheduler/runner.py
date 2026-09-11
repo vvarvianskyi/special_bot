@@ -26,6 +26,10 @@ logger = logging.getLogger("promo_monitor.runner")
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 DEFAULT_SITES_PATH = CONFIG_DIR / "sites.yaml"
 
+# Скриншот промо-блока сохраняется сюда только при реальном изменении акции —
+# чтобы можно было визуально сверить, что именно поменялось на сайте.
+RESULTS_DIR = Path.home() / "Desktop" / "Result"
+
 # Статусы, которые не считаются "без изменений" — используются, чтобы решить,
 # стоит ли слать письмо, если включён REPORT_ONLY_ON_CHANGES.
 NOTABLE_STATUSES = {
@@ -61,6 +65,20 @@ def _resolve_cookies(site: Dict[str, Any]) -> Optional[Dict[str, str]]:
         f"для каждого сайта) — сохраните cookies залогиненной вручную сессии "
         f"в {prefix}_COOKIES."
     )
+
+
+def _save_screenshot(site_id: str, timestamp: str, screenshot: Optional[bytes]) -> Optional[Path]:
+    if not screenshot:
+        return None
+    safe_ts = timestamp.replace(":", "-")
+    path = RESULTS_DIR / f"{site_id}_{safe_ts}.png"
+    try:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(screenshot)
+        return path
+    except OSError:
+        logger.exception("Не удалось сохранить скриншот в %s", path)
+        return None
 
 
 def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
@@ -116,6 +134,10 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         row["status"] = "changed"
         row["old_text"] = truncate(last.raw_text, 300)
         row["new_text"] = truncate(new_text, 300)
+        screenshot_path = _save_screenshot(site_id, now, result.screenshot)
+        if screenshot_path:
+            row["screenshot_path"] = str(screenshot_path)
+            logger.info("%s: скриншот изменения сохранён в %s", site_id, screenshot_path)
     else:
         logger.info("%s: первый снапшот сохранён (базовая линия)", site_id)
         row["status"] = "baseline"

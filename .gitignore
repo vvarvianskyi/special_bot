@@ -1,6 +1,7 @@
 config/.env
 logs/*.log
 reports/*.xlsx
+reports/*.html
 storage/*.db
 *.db
 __pycache__/

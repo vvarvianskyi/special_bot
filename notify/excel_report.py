@@ -9,7 +9,7 @@ from openpyxl.styles import Font
 
 logger = logging.getLogger("promo_monitor.report")
 
-COLUMNS = ["Сайт", "ID", "Статус", "Было", "Стало / детали", "Ссылка", "Время"]
+COLUMNS = ["Сайт", "ID", "Статус", "Было", "Стало / детали", "Ссылка", "Время", "Скриншот"]
 
 STATUS_LABELS = {
     "unchanged": "Без изменений",
@@ -43,6 +43,7 @@ def build_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
                 row.get("new_text", ""),
                 row.get("url", ""),
                 row.get("timestamp", ""),
+                row.get("screenshot_path", ""),
             ]
         )
 

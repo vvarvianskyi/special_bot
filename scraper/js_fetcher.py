@@ -35,7 +35,7 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            html = _render_page(url, cookies, selector)
+            html, screenshot = _render_page(url, cookies, selector)
             break
         except Exception as exc:  # таймауты, навигационные ошибки Playwright
             last_error = str(exc)
@@ -56,10 +56,10 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
         return FetchResult(status="no_selector_match", error=f"Селектор '{selector}' не нашёл ни одного блока")
 
     text = "\n".join(block.get_text(separator=" ", strip=True) for block in blocks)
-    return FetchResult(status="ok", text=text)
+    return FetchResult(status="ok", text=text, screenshot=screenshot)
 
 
-def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str) -> str:
+def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
@@ -86,6 +86,21 @@ def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str) -> 
             page.wait_for_selector(selector, timeout=15000)
         except Exception:
             logger.debug("Селектор '%s' не появился за 15с — парсим то, что успело отрендериться", selector)
+
         html = page.content()
+
+        # Скриншот промо-блока для визуальной сверки при обнаруженном изменении
+        # (см. runner.py). Если у селектора несколько совпадений — берём первое;
+        # если сам блок почему-то не сфотографировать (не в DOM/невидим) —
+        # подстраховываемся скриншотом всей страницы, лишь бы не терять снимок.
+        screenshot = None
+        try:
+            screenshot = page.locator(selector).first.screenshot(timeout=5000)
+        except Exception:
+            try:
+                screenshot = page.screenshot(full_page=True, timeout=10000)
+            except Exception:
+                logger.debug("Не удалось сделать скриншот для %s", url)
+
         browser.close()
-        return html
+        return html, screenshot
