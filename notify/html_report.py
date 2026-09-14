@@ -21,6 +21,15 @@ STATUS_COLORS = {
 }
 
 
+def _format_multiline(text: str) -> str:
+    """Каждая строка акции — отдельный блок с отступом, а не слипшийся текст
+    (было: white-space:pre-wrap без интервалов между пунктами списка)."""
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return ""
+    return "".join(f'<div class="line">{html.escape(line)}</div>' for line in lines)
+
+
 def _badge(status: str) -> str:
     label = html.escape(STATUS_LABELS.get(status, status))
     color = STATUS_COLORS.get(status, "#7a7a7a")
@@ -40,8 +49,8 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
     for row in rows:
         site_name = html.escape(row.get("site_name", ""))
         url = html.escape(row.get("url", ""))
-        old_text = html.escape(row.get("old_text", "") or "")
-        new_text = html.escape(row.get("new_text", "") or "")
+        old_text = _format_multiline(row.get("old_text", ""))
+        new_text = _format_multiline(row.get("new_text", ""))
         timestamp = html.escape(row.get("timestamp", ""))
 
         screenshot_cell = ""
@@ -83,7 +92,9 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
   table {{ width:100%; border-collapse:collapse; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.1); }}
   th, td {{ text-align:left; padding:10px 12px; border-bottom:1px solid #eee; vertical-align:top; font-size:13px; }}
   th {{ background:#fafafa; font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:#666; }}
-  td.text-cell {{ max-width:360px; white-space:pre-wrap; word-break:break-word; color:#333; }}
+  td.text-cell {{ max-width:360px; word-break:break-word; color:#333; }}
+  td.text-cell .line {{ padding-block:4px; }}
+  td.text-cell .line + .line {{ border-top:1px solid #f0efe9; }}
   td.ts {{ white-space:nowrap; color:#888; font-size:12px; }}
   a {{ color:#2a5db0; text-decoration:none; }}
   a:hover {{ text-decoration:underline; }}
