@@ -3,6 +3,7 @@
 прогоне, чтобы всегда было куда "зайти и посмотреть" текущее состояние."""
 
 import html
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -30,6 +31,15 @@ def _format_multiline(text: str) -> str:
     return "".join(f'<div class="line">{html.escape(line)}</div>' for line in lines)
 
 
+def _format_timestamp(iso_string: str) -> str:
+    """"2026-09-14T09:04:33.736252+00:00" -> "14.09.2026 12:04" (местное время
+    вместо сырого UTC ISO с микросекундами)."""
+    try:
+        return datetime.fromisoformat(iso_string).astimezone().strftime("%d.%m.%Y %H:%M")
+    except (ValueError, TypeError):
+        return iso_string
+
+
 def _badge(status: str) -> str:
     label = html.escape(STATUS_LABELS.get(status, status))
     color = STATUS_COLORS.get(status, "#7a7a7a")
@@ -51,7 +61,7 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
         url = html.escape(row.get("url", ""))
         old_text = _format_multiline(row.get("old_text", ""))
         new_text = _format_multiline(row.get("new_text", ""))
-        timestamp = html.escape(row.get("timestamp", ""))
+        timestamp = html.escape(_format_timestamp(row.get("timestamp", "")))
 
         screenshot_cell = ""
         screenshot_path = row.get("screenshot_path")
@@ -102,7 +112,7 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
 </head>
 <body>
   <h1>Мониторинг на промоции на конкуренти</h1>
-  <div class="meta">Последна проверка: {html.escape(generated_at)}</div>
+  <div class="meta">Последна проверка: {html.escape(_format_timestamp(generated_at))}</div>
   <table>
     <thead>
       <tr><th>Сайт</th><th>Статус</th><th>Преди</th><th>Сега / детайли</th>{screenshot_th}<th>Час</th></tr>
