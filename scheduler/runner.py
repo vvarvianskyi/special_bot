@@ -104,9 +104,12 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         "timestamp": now,
         "old_text": "",
         "new_text": "",
-        # С какой даты стоит соответствующая версия промо (не "когда проверяли").
+        # "Преди" — дата последнего РЕАЛЬНОГО изменения (когда появилась версия
+        # в колонке "Преди"); проставляется ниже, только когда есть с чем
+        # сравнивать. "Сега / детайли" — дата последней ПРОВЕРКИ бота, поэтому
+        # она всегда равна текущему прогону и нигде дальше не переопределяется.
         "old_since": "",
-        "new_since": "",
+        "new_since": now,
     }
 
     try:
@@ -140,9 +143,10 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         row["status"] = "unchanged"
         row["old_text"] = truncate(last.raw_text, 300)
         row["new_text"] = truncate(new_text, 300)
-        # Версия одна и та же — в обеих колонках дата, с которой она висит.
+        # Изменений нет — "Преди" показывает, с какой даты висит эта (та же
+        # самая) версия. "Сега" остаётся дефолтным now: даже без изменений
+        # бот только что её проверил.
         row["old_since"] = since or ""
-        row["new_since"] = since or ""
         return row
 
     if last is not None:
@@ -151,8 +155,9 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         row["status"] = "changed"
         row["old_text"] = truncate(last.raw_text, 300)
         row["new_text"] = truncate(new_text, 300)
+        # "Преди" — с какой даты висела старая версия (когда сменилась в
+        # последний раз до этого). "Сега" — дефолтный now (см. выше).
         row["old_since"] = since or ""
-        row["new_since"] = now
         screenshot_path = _save_screenshot(site_id, now, result.screenshot)
         if screenshot_path:
             row["screenshot_path"] = str(screenshot_path)
@@ -161,7 +166,7 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         logger.info("%s: первый снапшот сохранён (базовая линия)", site_id)
         row["status"] = "baseline"
         row["new_text"] = truncate(new_text, 300)
-        row["new_since"] = now
+        # Нет предыдущей версии для сравнения — "Преди" остаётся пустым.
 
     save_snapshot(Snapshot(site_id=site_id, timestamp=now, raw_text=new_text, hash=new_hash), db_path)
     return row

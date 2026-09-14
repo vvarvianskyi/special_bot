@@ -33,31 +33,43 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
             error="Playwright не установлен. Установите: pip install playwright && playwright install chromium",
         )
 
+    from bs4 import BeautifulSoup
+
     last_error = None
+    rendered_but_empty = False  # рендер хоть раз прошёл успешно, но блок не нашёлся
     for attempt in range(MAX_RETRIES + 1):
         try:
             html, screenshot = _render_page(url, cookies, selector)
-            break
         except Exception as exc:  # таймауты, навигационные ошибки Playwright
             last_error = str(exc)
             logger.warning("Попытка %d/%d (JS) для %s не удалась: %s", attempt + 1, MAX_RETRIES + 1, url, exc)
             if attempt < MAX_RETRIES:
                 time.sleep(2)
-    else:
-        return FetchResult(status="error", error=last_error or "Неизвестная ошибка рендеринга")
+            continue
 
-    if detect_antibot(html):
-        return FetchResult(status="blocked_by_antibot", error="Обнаружена антибот-защита (challenge-страница)")
+        if detect_antibot(html):
+            return FetchResult(status="blocked_by_antibot", error="Обнаружена антибот-защита (challenge-страница)")
 
-    from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        blocks = soup.select(selector)
+        if blocks:
+            text = "\n".join(extract_block_text(block) for block in blocks)
+            return FetchResult(status="ok", text=text, screenshot=screenshot)
 
-    soup = BeautifulSoup(html, "html.parser")
-    blocks = soup.select(selector)
-    if not blocks:
-        return FetchResult(status="no_selector_match", error=f"Селектор '{selector}' не нашёл ни одного блока")
+        # Пустой результат при успешном рендере — чаще всего блок на этом
+        # конкретном прогоне отрисовался медленнее, чем wait_for_selector внутри
+        # _render_page (см. palmsbet.com), а не по-настоящему сломанный селектор.
+        # Даём тот же повтор, что и при исключении, прежде чем считать это
+        # реальным no_selector_match.
+        rendered_but_empty = True
+        last_error = f"Селектор '{selector}' не нашёл ни одного блока"
+        logger.warning("Попытка %d/%d (JS) для %s: %s", attempt + 1, MAX_RETRIES + 1, url, last_error)
+        if attempt < MAX_RETRIES:
+            time.sleep(2)
 
-    text = "\n".join(extract_block_text(block) for block in blocks)
-    return FetchResult(status="ok", text=text, screenshot=screenshot)
+    if rendered_but_empty:
+        return FetchResult(status="no_selector_match", error=last_error)
+    return FetchResult(status="error", error=last_error or "Неизвестная ошибка рендеринга")
 
 
 def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str):
