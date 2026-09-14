@@ -48,7 +48,7 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
                 uri = html.escape(Path(screenshot_path).as_uri())
                 screenshot_cell = (
                     f'<a href="{uri}" target="_blank" rel="noopener">'
-                    f'<img src="{uri}" alt="скриншот" '
+                    f'<img src="{uri}" alt="скрийншот" '
                     f'style="max-width:160px;max-height:100px;border:1px solid #ddd;border-radius:4px"></a>'
                 )
             except ValueError:
@@ -67,10 +67,10 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
         )
 
     html_doc = f"""<!doctype html>
-<html lang="ru">
+<html lang="bg">
 <head>
 <meta charset="utf-8">
-<title>Промо-мониторинг конкурентов</title>
+<title>Мониторинг на промоции на конкуренти</title>
 <style>
   body {{ font-family: -apple-system, "Segoe UI", Arial, sans-serif; background:#f5f5f5;
           color:#1a1a1a; margin:0; padding:24px; }}
@@ -86,11 +86,11 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
 </style>
 </head>
 <body>
-  <h1>Промо-мониторинг конкурентов</h1>
-  <div class="meta">Последний прогон: {html.escape(generated_at)}</div>
+  <h1>Мониторинг на промоции на конкуренти</h1>
+  <div class="meta">Последна проверка: {html.escape(generated_at)}</div>
   <table>
     <thead>
-      <tr><th>Сайт</th><th>Статус</th><th>Было</th><th>Стало / детали</th><th>Скриншот</th><th>Время</th></tr>
+      <tr><th>Сайт</th><th>Статус</th><th>Преди</th><th>Сега / детайли</th><th>Скрийншот</th><th>Час</th></tr>
     </thead>
     <tbody>
       {''.join(body_rows)}

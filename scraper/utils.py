@@ -99,3 +99,20 @@ def detect_antibot(html: str) -> bool:
         return True
 
     return len(html) < CHALLENGE_PAGE_SIZE_THRESHOLD
+
+
+def extract_block_text(block) -> str:
+    """Текст промо-блока. Некоторые сайты (напр. elitbet.bg) рисуют акции как
+    баннеры-картинки без текста в DOM — в этом случае используем src/srcset
+    вложенных <img> как отпечаток контента: смена акции обычно означает
+    загрузку нового файла баннера с новым именем/URL, так что сравнение
+    по-прежнему ловит изменение, просто без читаемого diff текста."""
+    text = block.get_text(separator=" ", strip=True)
+    if text:
+        return text
+
+    images = list(block.find_all("img")) if hasattr(block, "find_all") else []
+    if getattr(block, "name", None) == "img":
+        images.append(block)
+    sources = [img.get("src") or img.get("data-src") or "" for img in images]
+    return " ".join(s for s in sources if s)

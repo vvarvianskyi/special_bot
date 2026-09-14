@@ -9,25 +9,27 @@ from openpyxl.styles import Font
 
 logger = logging.getLogger("promo_monitor.report")
 
-COLUMNS = ["Сайт", "ID", "Статус", "Было", "Стало / детали", "Ссылка", "Время", "Скриншот"]
+# Отчёты (Excel/HTML/письма) на болгарском — по требованию заказчика,
+# т.к. результаты предназначены для болгароязычной команды/теста.
+COLUMNS = ["Сайт", "ID", "Статус", "Преди", "Сега / детайли", "Връзка", "Час", "Скрийншот"]
 
 STATUS_LABELS = {
-    "unchanged": "Без изменений",
-    "changed": "Изменение промо",
-    "baseline": "Первый снапшот (базовая линия)",
-    "error": "Ошибка мониторинга",
-    "blocked_by_antibot": "Заблокировано антибот-защитой",
-    "no_selector_match": "Сломан селектор — проверь вручную",
-    "robots_disallowed": "Запрещено robots.txt",
-    "config_error": "Ошибка конфигурации (.env)",
-    "crashed": "Необработанная ошибка",
+    "unchanged": "Без промяна",
+    "changed": "Промяна в промоцията",
+    "baseline": "Първи снапшот (база за сравнение)",
+    "error": "Грешка при проверката",
+    "blocked_by_antibot": "Блокирано от анти-бот защита",
+    "no_selector_match": "Развален селектор — провери ръчно",
+    "robots_disallowed": "Забранено от robots.txt",
+    "config_error": "Грешка в конфигурацията (.env)",
+    "crashed": "Необработена грешка",
 }
 
 
 def build_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
     wb = Workbook()
     ws = wb.active
-    ws.title = "Промо-мониторинг"
+    ws.title = "Промо мониторинг"
     ws.append(COLUMNS)
     for cell in ws[1]:
         cell.font = Font(bold=True)

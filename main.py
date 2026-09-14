@@ -72,10 +72,14 @@ def _maybe_send_email(rows, report_path: Path) -> None:
 
     from notify.email_notifier import send_report_email
 
+    from notify.excel_report import STATUS_LABELS
+
     changed = sum(1 for r in rows if r["status"] == "changed")
     errors = sum(1 for r in rows if r["status"] not in ("unchanged", "changed", "baseline"))
-    subject = f"Промо-мониторинг: {changed} изменений, {errors} ошибок ({datetime.now():%Y-%m-%d})"
-    body = "Отчёт во вложении.\n\n" + "\n".join(f"{r['site_name']}: {r['status']}" for r in rows)
+    subject = f"Мониторинг на промоции: {changed} промени, {errors} грешки ({datetime.now():%Y-%m-%d})"
+    body = "Отчётът е прикачен.\n\n" + "\n".join(
+        f"{r['site_name']}: {STATUS_LABELS.get(r['status'], r['status'])}" for r in rows
+    )
 
     smtp_user = os.environ["SMTP_USER"]
     send_report_email(
@@ -111,6 +115,14 @@ def run_once(stagger_seconds: int) -> None:
         _maybe_send_email(rows, report_path)
     except Exception:
         logger.exception("Не удалось отправить письмо с отчётом — отчёт сохранён локально: %s", report_path)
+
+    if any(r["status"] == "changed" for r in rows):
+        from notify.screen_capture import capture_report_screenshot
+        from scheduler.runner import RESULTS_DIR
+
+        screen_path = RESULTS_DIR / f"report_{datetime.now():%Y-%m-%d_%H-%M-%S}.png"
+        if capture_report_screenshot(html_path, screen_path):
+            logger.info("Скриншот отчёта с результатами сохранён: %s", screen_path)
 
 
 def run_scheduled(stagger_seconds: int, hour: int, minute: int) -> None:

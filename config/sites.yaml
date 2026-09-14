@@ -28,3 +28,61 @@ sites:
     access: public
     render: js
     selector: '[role="listbox"][aria-label="Всички"] [role="option"]'
+
+  - id: mrbit
+    name: "MrBit"
+    url: "https://mrbit.bg/bg/promotions/offers"
+    access: public
+    render: js
+    selector: ".promotions-event-preview_custom-offer"
+
+  - id: sesame
+    name: "Sesame"
+    url: "https://sesame.bg/promotions"
+    access: public
+    render: js
+    selector: ".prm-lobby-card"
+
+  - id: betano
+    name: "Betano"
+    url: "https://www.betano.bg/"
+    access: public
+    render: js
+    # Отдельной страницы промоакций нет — блок "Оферти" встроен в главную.
+    # Селектор собран из нескольких utility-классов дизайн-системы сайта,
+    # он менее устойчив к редизайну, чем семантические классы у других
+    # сайтов — если поедет "no_selector_match", смотреть сюда в первую очередь.
+    selector: '.cui-relative.cui-box-border.cui-cursor-pointer.cui-overflow-hidden'
+
+  - id: admiralbet
+    name: "AdmiralBet"
+    url: "https://www.admiralbet.bg/promotions"
+    access: public
+    render: js
+    selector: "xbet-promotion-banner-full-card"
+
+  - id: efbet
+    name: "efbet"
+    url: "https://efbet.com/promotions"
+    access: public
+    render: js
+    # CSS-module класс с хэш-суффиксом (...___YpcKb) — суффикс меняется при
+    # пересборке фронтенда сайта, поэтому матчим по стабильной части имени.
+    selector: '[class*="PromotionItem-module__Container"]'
+
+  - id: elitbet
+    name: "Elitbet"
+    url: "https://elitbet.bg/promotions"
+    access: public
+    render: js
+    # Акции здесь — картинки-баннеры без текста в DOM (текст "зашит" в
+    # изображение). Селектор целится в сам <img>: extract_block_text()
+    # в этом случае использует src картинки как отпечаток контента —
+    # смена акции обычно означает новый файл с новым URL.
+    selector: ".slide img"
+
+  # bet365 (casino.bet365.com) — не добавлен: этот домен заблокирован
+  # политикой безопасности инструмента браузера у Claude, не удалось
+  # даже открыть страницу для подбора селектора. Нужно either руками
+  # прислать HTML/скриншот страницы акций, либо добавить сайт отдельно
+  # с другого инструмента.

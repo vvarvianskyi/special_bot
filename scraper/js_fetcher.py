@@ -13,6 +13,7 @@ from .utils import (
     USER_AGENT,
     FetchResult,
     detect_antibot,
+    extract_block_text,
     is_allowed_by_robots,
 )
 
@@ -55,7 +56,7 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
     if not blocks:
         return FetchResult(status="no_selector_match", error=f"Селектор '{selector}' не нашёл ни одного блока")
 
-    text = "\n".join(block.get_text(separator=" ", strip=True) for block in blocks)
+    text = "\n".join(extract_block_text(block) for block in blocks)
     return FetchResult(status="ok", text=text, screenshot=screenshot)
 
 
