@@ -30,7 +30,10 @@ def _badge(status: str) -> str:
     )
 
 
-def build_html_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
+def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screenshots: bool = True) -> Path:
+    """include_screenshots=False — для публичной версии (GitHub Pages/шаринг):
+    скриншоты лежат локально на диске (Desktop\\Result), file:// ссылки на них
+    ни у кого, кроме этого ПК, не откроются, так что там их просто не показываем."""
     generated_at = rows[0]["timestamp"] if rows else ""
 
     body_rows = []
@@ -43,7 +46,7 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
 
         screenshot_cell = ""
         screenshot_path = row.get("screenshot_path")
-        if screenshot_path:
+        if include_screenshots and screenshot_path:
             try:
                 uri = html.escape(Path(screenshot_path).as_uri())
                 screenshot_cell = (
@@ -54,18 +57,19 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
             except ValueError:
                 pass
 
+        screenshot_td = f"\n          <td>{screenshot_cell}</td>" if include_screenshots else ""
         body_rows.append(
             f"""
         <tr>
           <td><a href="{url}" target="_blank" rel="noopener">{site_name}</a></td>
           <td>{_badge(row.get("status", ""))}</td>
           <td class="text-cell">{old_text}</td>
-          <td class="text-cell">{new_text}</td>
-          <td>{screenshot_cell}</td>
+          <td class="text-cell">{new_text}</td>{screenshot_td}
           <td class="ts">{timestamp}</td>
         </tr>"""
         )
 
+    screenshot_th = "<th>Скрийншот</th>" if include_screenshots else ""
     html_doc = f"""<!doctype html>
 <html lang="bg">
 <head>
@@ -90,7 +94,7 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
   <div class="meta">Последна проверка: {html.escape(generated_at)}</div>
   <table>
     <thead>
-      <tr><th>Сайт</th><th>Статус</th><th>Преди</th><th>Сега / детайли</th><th>Скрийншот</th><th>Час</th></tr>
+      <tr><th>Сайт</th><th>Статус</th><th>Преди</th><th>Сега / детайли</th>{screenshot_th}<th>Час</th></tr>
     </thead>
     <tbody>
       {''.join(body_rows)}

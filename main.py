@@ -24,6 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent
 LOG_PATH = BASE_DIR / "logs" / "monitor.log"
 ENV_PATH = BASE_DIR / "config" / ".env"
 REPORTS_DIR = BASE_DIR / "reports"
+DOCS_DIR = BASE_DIR / "docs"
 
 logger = logging.getLogger("promo_monitor.main")
 
@@ -96,6 +97,41 @@ def _maybe_send_email(rows, report_path: Path) -> None:
     )
 
 
+def _publish_to_pages(docs_html_path: Path) -> None:
+    """Коммитит и пушит docs/index.html, чтобы GitHub Pages отдавал свежий
+    отчёт по постоянной ссылке без участия человека на каждый прогон.
+    Не должно валить основной прогон бота — любая ошибка (нет сети, нет
+    git в PATH и т.п.) просто логируется."""
+    import subprocess
+
+    rel_path = docs_html_path.relative_to(BASE_DIR)
+    try:
+        subprocess.run(
+            ["git", "add", str(rel_path)], cwd=BASE_DIR, check=True, capture_output=True, text=True
+        )
+        staged = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=BASE_DIR)
+        if staged.returncode == 0:
+            logger.info("GitHub Pages: отчёт не изменился, коммит не нужен")
+            return
+
+        subprocess.run(
+            ["git", "commit", "-m", f"Report update {datetime.now():%Y-%m-%d %H:%M}"],
+            cwd=BASE_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(["git", "push"], cwd=BASE_DIR, check=True, capture_output=True, text=True)
+        logger.info("GitHub Pages: отчёт опубликован (git push выполнен)")
+    except FileNotFoundError:
+        logger.warning("GitHub Pages: команда git не найдена — публикация пропущена")
+    except subprocess.CalledProcessError as exc:
+        logger.warning(
+            "GitHub Pages: не удалось закоммитить/запушить отчёт: %s",
+            (exc.stderr or str(exc)).strip(),
+        )
+
+
 def run_once(stagger_seconds: int) -> None:
     from notify.excel_report import build_report
     from notify.html_report import build_html_report
@@ -110,6 +146,13 @@ def run_once(stagger_seconds: int) -> None:
     html_path = REPORTS_DIR / "latest.html"
     build_html_report(rows, html_path)
     logger.info("HTML-отчёт обновлён: %s", html_path)
+
+    docs_path = DOCS_DIR / "index.html"
+    build_html_report(rows, docs_path, include_screenshots=False)
+    try:
+        _publish_to_pages(docs_path)
+    except Exception:
+        logger.exception("GitHub Pages: непредвиденная ошибка публикации")
 
     try:
         _maybe_send_email(rows, report_path)
