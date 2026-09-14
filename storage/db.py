@@ -55,6 +55,29 @@ def save_snapshot(snapshot: Snapshot, db_path: Path = DEFAULT_DB_PATH) -> None:
         conn.commit()
 
 
+def get_version_since(site_id: str, content_hash: str, db_path: Path = DEFAULT_DB_PATH) -> Optional[str]:
+    """Когда эта версия промо появилась на сайте впервые — начало непрерывной
+    серии снапшотов с таким хэшем.
+
+    Снапшот пишется каждый прогон, поэтому timestamp последнего снапшота — это
+    "проверено час назад", а не "акция сменилась час назад". Для отчёта нужна
+    именно дата появления версии: берём последний снапшот с ДРУГИМ хэшем и
+    первый снапшот с нашим хэшем после него.
+    """
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            """
+            SELECT MIN(timestamp) FROM snapshots
+            WHERE site_id = ? AND hash = ? AND timestamp > COALESCE(
+                (SELECT MAX(timestamp) FROM snapshots WHERE site_id = ? AND hash != ?), ''
+            )
+            """,
+            (site_id, content_hash, site_id, content_hash),
+        )
+        row = cur.fetchone()
+        return row[0] if row and row[0] else None
+
+
 def get_last_snapshot(site_id: str, db_path: Path = DEFAULT_DB_PATH) -> Optional[Snapshot]:
     with _connect(db_path) as conn:
         cur = conn.execute(

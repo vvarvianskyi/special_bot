@@ -3,11 +3,11 @@
 прогоне, чтобы всегда было куда "зайти и посмотреть" текущее состояние."""
 
 import html
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
 from .excel_report import STATUS_LABELS
+from .formatting import format_timestamp
 
 STATUS_COLORS = {
     "unchanged": "#4a7a4a",
@@ -31,13 +31,16 @@ def _format_multiline(text: str) -> str:
     return "".join(f'<div class="line">{html.escape(line)}</div>' for line in lines)
 
 
-def _format_timestamp(iso_string: str) -> str:
-    """"2026-09-14T09:04:33.736252+00:00" -> "14.09.2026 12:04" (местное время
-    вместо сырого UTC ISO с микросекундами)."""
-    try:
-        return datetime.fromisoformat(iso_string).astimezone().strftime("%d.%m.%Y %H:%M")
-    except (ValueError, TypeError):
-        return iso_string
+def _format_cell(text: str, since: str) -> str:
+    """Текст версии промо + с какой даты она стоит на сайте.
+
+    Дата берётся не из времени проверки (бот ходит каждый час), а из момента
+    появления этой версии — чтобы было видно "старая акция висела с 01.09,
+    новая появилась 14.09", а не "проверено час назад" в обеих колонках."""
+    body = _format_multiline(text)
+    if not since:
+        return body
+    return f'<div class="since">от {html.escape(format_timestamp(since))}</div>{body}'
 
 
 def _badge(status: str) -> str:
@@ -59,9 +62,9 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
     for row in rows:
         site_name = html.escape(row.get("site_name", ""))
         url = html.escape(row.get("url", ""))
-        old_text = _format_multiline(row.get("old_text", ""))
-        new_text = _format_multiline(row.get("new_text", ""))
-        timestamp = html.escape(_format_timestamp(row.get("timestamp", "")))
+        old_text = _format_cell(row.get("old_text", ""), row.get("old_since", ""))
+        new_text = _format_cell(row.get("new_text", ""), row.get("new_since", ""))
+        timestamp = html.escape(format_timestamp(row.get("timestamp", "")))
 
         screenshot_cell = ""
         screenshot_path = row.get("screenshot_path")
@@ -105,6 +108,9 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
   td.text-cell {{ max-width:360px; word-break:break-word; color:#333; }}
   td.text-cell .line {{ padding-block:4px; }}
   td.text-cell .line + .line {{ border-top:1px solid #f0efe9; }}
+  td.text-cell .since {{ display:inline-block; margin-bottom:8px; padding:2px 8px;
+                         background:#f0efe9; border-radius:10px; color:#6b6b6b;
+                         font-size:11px; white-space:nowrap; }}
   td.ts {{ white-space:nowrap; color:#888; font-size:12px; }}
   a {{ color:#2a5db0; text-decoration:none; }}
   a:hover {{ text-decoration:underline; }}
@@ -112,7 +118,7 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
 </head>
 <body>
   <h1>Мониторинг на промоции на конкуренти</h1>
-  <div class="meta">Последна проверка: {html.escape(_format_timestamp(generated_at))}</div>
+  <div class="meta">Последна проверка: {html.escape(format_timestamp(generated_at))}</div>
   <table>
     <thead>
       <tr><th>Сайт</th><th>Статус</th><th>Преди</th><th>Сега / детайли</th>{screenshot_th}<th>Час</th></tr>

@@ -7,11 +7,24 @@ from typing import Any, Dict, List
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from .formatting import format_timestamp
+
 logger = logging.getLogger("promo_monitor.report")
 
 # Отчёты (Excel/HTML/письма) на болгарском — по требованию заказчика,
 # т.к. результаты предназначены для болгароязычной команды/теста.
-COLUMNS = ["Сайт", "ID", "Статус", "Преди", "Сега / детайли", "Връзка", "Час", "Скрийншот"]
+COLUMNS = [
+    "Сайт",
+    "ID",
+    "Статус",
+    "Преди",
+    "Преди — от",
+    "Сега / детайли",
+    "Сега — от",
+    "Връзка",
+    "Час",
+    "Скрийншот",
+]
 
 STATUS_LABELS = {
     "unchanged": "Без промяна",
@@ -42,9 +55,11 @@ def build_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
                 row.get("site_id", ""),
                 STATUS_LABELS.get(status, status),
                 row.get("old_text", ""),
+                format_timestamp(row.get("old_since", "")),
                 row.get("new_text", ""),
+                format_timestamp(row.get("new_since", "")),
                 row.get("url", ""),
-                row.get("timestamp", ""),
+                format_timestamp(row.get("timestamp", "")),
                 row.get("screenshot_path", ""),
             ]
         )

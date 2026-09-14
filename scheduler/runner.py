@@ -19,7 +19,14 @@ from diff.differ import compute_hash, generate_diff, truncate
 from scraper.auth_session import parse_cookie_header, require_credentials
 from scraper.js_fetcher import fetch_js
 from scraper.static_fetcher import fetch_static
-from storage.db import DEFAULT_DB_PATH, Snapshot, get_last_snapshot, init_db, save_snapshot
+from storage.db import (
+    DEFAULT_DB_PATH,
+    Snapshot,
+    get_last_snapshot,
+    get_version_since,
+    init_db,
+    save_snapshot,
+)
 
 logger = logging.getLogger("promo_monitor.runner")
 
@@ -97,6 +104,9 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         "timestamp": now,
         "old_text": "",
         "new_text": "",
+        # С какой даты стоит соответствующая версия промо (не "когда проверяли").
+        "old_since": "",
+        "new_since": "",
     }
 
     try:
@@ -120,12 +130,19 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
     new_hash = compute_hash(new_text)
     last = get_last_snapshot(site_id, db_path)
 
+    # Считаем ДО save_snapshot: после вставки нового снапшота "последним
+    # другим хэшем" станет текущий, и дата появления старой версии потеряется.
+    since = get_version_since(site_id, last.hash, db_path) if last is not None else None
+
     if last is not None and last.hash == new_hash:
         logger.info("%s: изменений нет", site_id)
         save_snapshot(Snapshot(site_id=site_id, timestamp=now, raw_text=new_text, hash=new_hash), db_path)
         row["status"] = "unchanged"
         row["old_text"] = truncate(last.raw_text, 300)
         row["new_text"] = truncate(new_text, 300)
+        # Версия одна и та же — в обеих колонках дата, с которой она висит.
+        row["old_since"] = since or ""
+        row["new_since"] = since or ""
         return row
 
     if last is not None:
@@ -134,6 +151,8 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         row["status"] = "changed"
         row["old_text"] = truncate(last.raw_text, 300)
         row["new_text"] = truncate(new_text, 300)
+        row["old_since"] = since or ""
+        row["new_since"] = now
         screenshot_path = _save_screenshot(site_id, now, result.screenshot)
         if screenshot_path:
             row["screenshot_path"] = str(screenshot_path)
@@ -142,6 +161,7 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         logger.info("%s: первый снапшот сохранён (базовая линия)", site_id)
         row["status"] = "baseline"
         row["new_text"] = truncate(new_text, 300)
+        row["new_since"] = now
 
     save_snapshot(Snapshot(site_id=site_id, timestamp=now, raw_text=new_text, hash=new_hash), db_path)
     return row
