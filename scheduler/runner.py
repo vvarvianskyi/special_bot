@@ -48,6 +48,11 @@ NOTABLE_STATUSES = {
     "crashed",
 }
 
+# Пауза перед повторной проверкой сайтов, упавших с сетевой ошибкой (см.
+# run_all) — не мгновенный ретрай, а расчёт на то, что нестабильный
+# интернет/DNS сам восстановится за пару минут.
+RETRY_PASS_DELAY_SECONDS = 120
+
 
 def load_sites(path: Path = DEFAULT_SITES_PATH) -> List[Dict[str, Any]]:
     with open(path, "r", encoding="utf-8") as f:
@@ -201,6 +206,39 @@ def run_all(
             )
         if stagger_seconds and index < len(sites) - 1:
             time.sleep(stagger_seconds)
+
+    # Короткая повторная попытка для сайтов с сетевой ошибкой (error) —
+    # большинство таких сбоев это секунды-минуты нестабильного интернета на
+    # самом ПК (DNS/таймаут), а не реальная недоступность сайта конкурента.
+    # process_site уже делает 1 повтор почти сразу (см. MAX_RETRIES в
+    # scraper/utils.py) — этого достаточно для мгновенного сбоя, но не для
+    # сбоя длиной в пару минут. Даём ещё один шанс после паузы, прежде чем
+    # показывать ошибку в отчёте на весь час до следующего прогона.
+    #
+    # НЕ трогаем no_selector_match/blocked_by_antibot/config_error/
+    # robots_disallowed/crashed — там ждать бессмысленно (либо нужна ручная
+    # проверка, либо повтор даст тот же результат).
+    error_indices = [i for i, r in enumerate(rows) if r.get("status") == "error"]
+    if error_indices:
+        retry_site_ids = [rows[i]["site_id"] for i in error_indices]
+        logger.info(
+            "Повторная проверка через %dс для сайтов с сетевой ошибкой: %s",
+            RETRY_PASS_DELAY_SECONDS,
+            retry_site_ids,
+        )
+        time.sleep(RETRY_PASS_DELAY_SECONDS)
+        for i in error_indices:
+            site = sites[i]
+            try:
+                retried_row = process_site(site, db_path)
+            except Exception:
+                logger.exception("%s: необработанная ошибка при повторной проверке", site.get("id", i))
+                continue
+            if retried_row["status"] != "error":
+                logger.info("%s: повторная проверка удалась (%s)", site["id"], retried_row["status"])
+            else:
+                logger.info("%s: повторная проверка снова не удалась — оставляем error", site["id"])
+            rows[i] = retried_row
 
     logger.info("Итог прогона: %s", {r["site_id"]: r["status"] for r in rows})
     return rows
