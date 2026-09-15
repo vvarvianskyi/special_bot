@@ -3,6 +3,7 @@
 прогоне, чтобы всегда было куда "зайти и посмотреть" текущее состояние."""
 
 import html
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -56,7 +57,12 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
     """include_screenshots=False — для публичной версии (GitHub Pages/шаринг):
     скриншоты лежат локально на диске (Desktop\\Result), file:// ссылки на них
     ни у кого, кроме этого ПК, не откроются, так что там их просто не показываем."""
-    generated_at = rows[0]["timestamp"] if rows else ""
+    # НЕ rows[0]["timestamp"] — это момент проверки ПЕРВОГО сайта в списке
+    # (c8888), а прогон растянут по стаггеру на ~45 минут для 10 сайтов.
+    # Шапка "Последна проверка" должна отвечать на вопрос "насколько свежа
+    # эта страница", а не "когда проверился самый первый сайт" — иначе она
+    # всегда выглядит устаревшей почти на час, даже сразу после публикации.
+    generated_at = datetime.now(timezone.utc).isoformat()
 
     body_rows = []
     for row in rows:
