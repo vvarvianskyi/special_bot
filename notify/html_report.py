@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .excel_report import STATUS_LABELS
-from .formatting import format_timestamp
+from .formatting import display_status, format_timestamp
 
 STATUS_COLORS = {
     "unchanged": "#4a7a4a",
@@ -53,6 +53,17 @@ def _badge(status: str) -> str:
     )
 
 
+def _status_cell(row: Dict[str, Any]) -> str:
+    last_change_at = row.get("last_change_at", "")
+    badge = _badge(display_status(row))
+    if not last_change_at:
+        return badge
+    return (
+        f'{badge}<div class="last-change">Последна промяна:<br>'
+        f'{html.escape(format_timestamp(last_change_at))}</div>'
+    )
+
+
 def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screenshots: bool = True) -> Path:
     """include_screenshots=False — для публичной версии (GitHub Pages/шаринг):
     скриншоты лежат локально на диске (Desktop\\Result), file:// ссылки на них
@@ -90,7 +101,7 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
             f"""
         <tr>
           <td><a href="{url}" target="_blank" rel="noopener">{site_name}</a></td>
-          <td>{_badge(row.get("status", ""))}</td>
+          <td>{_status_cell(row)}</td>
           <td class="text-cell">{old_text}</td>
           <td class="text-cell">{new_text}</td>{screenshot_td}
           <td class="ts">{timestamp}</td>
@@ -118,6 +129,7 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
                          background:#f0efe9; border-radius:10px; color:#6b6b6b;
                          font-size:11px; white-space:nowrap; }}
   td.ts {{ white-space:nowrap; color:#888; font-size:12px; }}
+  .last-change {{ margin-top:6px; color:#888; font-size:11px; line-height:1.4; white-space:nowrap; }}
   a {{ color:#2a5db0; text-decoration:none; }}
   a:hover {{ text-decoration:underline; }}
 </style>

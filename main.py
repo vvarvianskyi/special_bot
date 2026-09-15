@@ -74,12 +74,18 @@ def _maybe_send_email(rows, report_path: Path) -> None:
     from notify.email_notifier import send_report_email
 
     from notify.excel_report import STATUS_LABELS
+    from notify.formatting import display_status
 
-    changed = sum(1 for r in rows if r["status"] == "changed")
+    # display_status (не сырой r["status"]) — чтобы письмо и отчёт (Excel/HTML)
+    # согласованно показывали "Промяна" ещё 24ч после самого изменения, а не
+    # только на том единственном прогоне, где diff его нашёл. "errors" и
+    # решение слать ли письмо вообще (NOTABLE_STATUSES выше) остаются на сыром
+    # статусе — это про то, что случилось именно СЕЙЧАС, а не про историю.
+    changed = sum(1 for r in rows if display_status(r) == "changed")
     errors = sum(1 for r in rows if r["status"] not in ("unchanged", "changed", "baseline"))
     subject = f"Мониторинг на промоции: {changed} промени, {errors} грешки ({datetime.now():%Y-%m-%d})"
     body = "Отчётът е прикачен.\n\n" + "\n".join(
-        f"{r['site_name']}: {STATUS_LABELS.get(r['status'], r['status'])}" for r in rows
+        f"{r['site_name']}: {STATUS_LABELS.get(display_status(r), display_status(r))}" for r in rows
     )
 
     smtp_user = os.environ["SMTP_USER"]

@@ -115,6 +115,13 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         # она всегда равна текущему прогону и нигде дальше не переопределяется.
         "old_since": "",
         "new_since": now,
+        # Когда текущая (актуальная прямо сейчас) версия промо реально
+        # появилась — единое поле независимо от status ниже. Отчёты держат
+        # бейдж "Промяна" видимым 24ч от этого момента (см. formatting.py:
+        # is_within_hours), чтобы редкие проверки не давали пропустить
+        # изменение, если отчёт открыли уже после того, как статус на
+        # следующем прогоне вернулся в "Без промяна".
+        "last_change_at": "",
     }
 
     try:
@@ -152,6 +159,7 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         # самая) версия. "Сега" остаётся дефолтным now: даже без изменений
         # бот только что её проверил.
         row["old_since"] = since or ""
+        row["last_change_at"] = since or ""
         return row
 
     if last is not None:
@@ -163,6 +171,7 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         # "Преди" — с какой даты висела старая версия (когда сменилась в
         # последний раз до этого). "Сега" — дефолтный now (см. выше).
         row["old_since"] = since or ""
+        row["last_change_at"] = now  # это и есть момент изменения
         screenshot_path = _save_screenshot(site_id, now, result.screenshot)
         if screenshot_path:
             row["screenshot_path"] = str(screenshot_path)

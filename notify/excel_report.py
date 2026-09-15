@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
-from .formatting import format_timestamp
+from .formatting import display_status, format_timestamp
 
 logger = logging.getLogger("promo_monitor.report")
 
@@ -17,6 +17,7 @@ COLUMNS = [
     "Сайт",
     "ID",
     "Статус",
+    "Последна промяна",
     "Преди",
     "Преди — от",
     "Сега / детайли",
@@ -48,12 +49,18 @@ def build_report(rows: List[Dict[str, Any]], out_path: Path) -> Path:
         cell.font = Font(bold=True)
 
     for row in rows:
-        status = row.get("status", "")
+        # "Промяна" держится 24ч от последнего реального изменения (см.
+        # formatting.display_status) — не только на том единственном прогоне,
+        # где сама разница была найдена, иначе при редких проверках отчёт
+        # легко открыть уже ПОСЛЕ того, как статус тихо вернулся в "Без
+        # промяна", и пропустить, что изменение вообще было.
+        status = display_status(row)
         ws.append(
             [
                 row.get("site_name", ""),
                 row.get("site_id", ""),
                 STATUS_LABELS.get(status, status),
+                format_timestamp(row.get("last_change_at", "")),
                 row.get("old_text", ""),
                 format_timestamp(row.get("old_since", "")),
                 row.get("new_text", ""),
