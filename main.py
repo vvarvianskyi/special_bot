@@ -141,37 +141,43 @@ def _publish_to_pages(docs_html_path: Path) -> None:
 def run_once(stagger_seconds: int) -> None:
     from notify.excel_report import build_report
     from notify.html_report import build_html_report
+    from scheduler.keep_awake import prevent_sleep
     from scheduler.runner import run_all
 
-    rows = run_all(stagger_seconds=stagger_seconds)
+    # Планировщик будит ПК на запуск (WakeToRun), но это разовое действие —
+    # без этого система может уйти в обычный сон по бездействию на середине
+    # прогона, т.к. Windows считает простой по вводу с клавиатуры/мыши, а не
+    # по тому, что в фоне работает процесс (см. scheduler/keep_awake.py).
+    with prevent_sleep():
+        rows = run_all(stagger_seconds=stagger_seconds)
 
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    report_path = REPORTS_DIR / f"promo_report_{datetime.now():%Y-%m-%d_%H-%M-%S}.xlsx"
-    build_report(rows, report_path)
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        report_path = REPORTS_DIR / f"promo_report_{datetime.now():%Y-%m-%d_%H-%M-%S}.xlsx"
+        build_report(rows, report_path)
 
-    html_path = REPORTS_DIR / "latest.html"
-    build_html_report(rows, html_path)
-    logger.info("HTML-отчёт обновлён: %s", html_path)
+        html_path = REPORTS_DIR / "latest.html"
+        build_html_report(rows, html_path)
+        logger.info("HTML-отчёт обновлён: %s", html_path)
 
-    docs_path = DOCS_DIR / "index.html"
-    build_html_report(rows, docs_path, include_screenshots=False)
-    try:
-        _publish_to_pages(docs_path)
-    except Exception:
-        logger.exception("GitHub Pages: непредвиденная ошибка публикации")
+        docs_path = DOCS_DIR / "index.html"
+        build_html_report(rows, docs_path, include_screenshots=False)
+        try:
+            _publish_to_pages(docs_path)
+        except Exception:
+            logger.exception("GitHub Pages: непредвиденная ошибка публикации")
 
-    try:
-        _maybe_send_email(rows, report_path)
-    except Exception:
-        logger.exception("Не удалось отправить письмо с отчётом — отчёт сохранён локально: %s", report_path)
+        try:
+            _maybe_send_email(rows, report_path)
+        except Exception:
+            logger.exception("Не удалось отправить письмо с отчётом — отчёт сохранён локально: %s", report_path)
 
-    if any(r["status"] == "changed" for r in rows):
-        from notify.screen_capture import capture_report_screenshot
-        from scheduler.runner import RESULTS_DIR
+        if any(r["status"] == "changed" for r in rows):
+            from notify.screen_capture import capture_report_screenshot
+            from scheduler.runner import RESULTS_DIR
 
-        screen_path = RESULTS_DIR / f"report_{datetime.now():%Y-%m-%d_%H-%M-%S}.png"
-        if capture_report_screenshot(html_path, screen_path):
-            logger.info("Скриншот отчёта с результатами сохранён: %s", screen_path)
+            screen_path = RESULTS_DIR / f"report_{datetime.now():%Y-%m-%d_%H-%M-%S}.png"
+            if capture_report_screenshot(html_path, screen_path):
+                logger.info("Скриншот отчёта с результатами сохранён: %s", screen_path)
 
 
 def run_scheduled(stagger_seconds: int, hour: int, minute: int) -> None:
