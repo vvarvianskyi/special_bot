@@ -37,6 +37,7 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
 
     last_error = None
     rendered_but_empty = False  # рендер хоть раз прошёл успешно, но блок не нашёлся
+    antibot_seen = False  # ...и хотя бы раз это сопровождалось маркером антибота
     for attempt in range(MAX_RETRIES + 1):
         try:
             html, screenshot = _render_page(url, cookies, selector)
@@ -47,26 +48,39 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
                 time.sleep(2)
             continue
 
-        if detect_antibot(html):
-            return FetchResult(status="blocked_by_antibot", error="Обнаружена антибот-защита (challenge-страница)")
-
         soup = BeautifulSoup(html, "html.parser")
         blocks = soup.select(selector)
         if blocks:
+            # Реальный контент найден — значит, страница точно не заблокирована,
+            # независимо от того, что где-то на ней (например, в скрипте формы
+            # входа) может упоминаться Cloudflare Turnstile. detect_antibot
+            # здесь намеренно НЕ проверяем: у него самого есть широкие маркеры
+            # (recaptcha, datadome...), которые легко встретить на совершенно
+            # рабочей странице по не связанной с блокировкой причине (см. ниже).
             text = "\n".join(extract_block_text(block) for block in blocks)
             return FetchResult(status="ok", text=text, screenshot=screenshot)
 
-        # Пустой результат при успешном рендере — чаще всего блок на этом
-        # конкретном прогоне отрисовался медленнее, чем wait_for_selector внутри
-        # _render_page (см. palmsbet.com), а не по-настоящему сломанный селектор.
-        # Даём тот же повтор, что и при исключении, прежде чем считать это
-        # реальным no_selector_match.
+        # Пустой результат — тут уже стоит спросить detect_antibot, ПОЧЕМУ:
+        # либо блок на этом прогоне отрисовался медленнее, чем wait_for_selector
+        # внутри _render_page (см. palmsbet.com — раньше это давало ложный
+        # no_selector_match), либо страницу реально закрывает антибот-чэлендж
+        # (тоже видели на palmsbet.com — просто в другой раз). Проверять маркеры
+        # ТОЛЬКО здесь, а не до селектора — иначе страницы, где Cloudflare
+        # Turnstile просто подключён скриптом для формы входа/регистрации, но
+        # промо-контент на месте (inbet/winbet/sesame — тот же общий движок),
+        # ложно помечались бы заблокированными.
         rendered_but_empty = True
-        last_error = f"Селектор '{selector}' не нашёл ни одного блока"
+        if detect_antibot(html):
+            antibot_seen = True
+            last_error = "Обнаружена антибот-защита (challenge-страница)"
+        else:
+            last_error = f"Селектор '{selector}' не нашёл ни одного блока"
         logger.warning("Попытка %d/%d (JS) для %s: %s", attempt + 1, MAX_RETRIES + 1, url, last_error)
         if attempt < MAX_RETRIES:
             time.sleep(2)
 
+    if antibot_seen:
+        return FetchResult(status="blocked_by_antibot", error=last_error)
     if rendered_but_empty:
         return FetchResult(status="no_selector_match", error=last_error)
     return FetchResult(status="error", error=last_error or "Неизвестная ошибка рендеринга")

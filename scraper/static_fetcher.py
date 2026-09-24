@@ -47,13 +47,15 @@ def fetch_static(url: str, selector: str, cookies: Optional[Dict[str, str]] = No
     else:
         return FetchResult(status="error", error=last_error or "Неизвестная ошибка запроса")
 
-    if detect_antibot(html):
-        return FetchResult(status="blocked_by_antibot", error="Обнаружена антибот-защита (challenge-страница)")
-
     soup = BeautifulSoup(html, "html.parser")
     blocks = soup.select(selector)
-    if not blocks:
-        return FetchResult(status="no_selector_match", error=f"Селектор '{selector}' не нашёл ни одного блока")
+    if blocks:
+        # Реальный контент найден — точно не заблокировано, даже если где-то на
+        # странице упоминается антибот-виджет по не связанной причине (см. тот
+        # же порядок проверки и объяснение в scraper/js_fetcher.py).
+        text = "\n".join(extract_block_text(block) for block in blocks)
+        return FetchResult(status="ok", text=text)
 
-    text = "\n".join(extract_block_text(block) for block in blocks)
-    return FetchResult(status="ok", text=text)
+    if detect_antibot(html):
+        return FetchResult(status="blocked_by_antibot", error="Обнаружена антибот-защита (challenge-страница)")
+    return FetchResult(status="no_selector_match", error=f"Селектор '{selector}' не нашёл ни одного блока")
