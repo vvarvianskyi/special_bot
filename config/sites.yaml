@@ -22,12 +22,13 @@ sites:
     # Начален welcome-бонус ("НАЧАЛЕН ALL INCLUSIVE БОНУС") виден публично,
     # без логина — авторизация не требуется для мониторинга этой страницы.
 
-  - id: palmsbet
-    name: "Palms Bet"
-    url: "https://www.palmsbet.com/bg/promotions/"
-    access: public
-    render: js
-    selector: '[role="listbox"][aria-label="Всички"] [role="option"]'
+  # Palms Bet — исключён из мониторинга: страница акций закрыта Cloudflare
+  # Turnstile-чэлленджем ("Verify you are human") два дня подряд, один и тот
+  # же экран оба раза — похоже на постоянный гейт, а не разовую меру. Правила
+  # проекта не допускают попыток его обхода (см. README), так что дальше
+  # честно показывать "blocked_by_antibot" каждый день смысла нет — история
+  # снапшотов palmsbet в storage/promo_monitor.db не удалена, просто больше
+  # не пополняется.
 
   - id: mrbit
     name: "MrBit"
