@@ -86,6 +86,40 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
     return FetchResult(status="error", error=last_error or "Неизвестная ошибка рендеринга")
 
 
+# Текст кнопок согласия на популярных CMP (Cookiebot, OneTrust и т.п.) на
+# болгарском/английском — best-effort, не привязано к конкретному сайту.
+# Обычный клик по видимой кнопке, а не обход защиты: это просто то же
+# действие, что делает любой живой посетитель, прежде чем увидеть страницу.
+COOKIE_CONSENT_BUTTON_TEXTS = (
+    "Разреши всички",
+    "Приемам всички",
+    "Приемам",
+    "Съгласен съм",
+    "Accept all",
+    "I agree",
+    "Allow all",
+)
+
+
+def _dismiss_cookie_banner(page) -> None:
+    """Пробует закрыть баннер согласия на cookies, если он есть.
+
+    Обнаружено на efbet.com (2 дня подряд "no_selector_match" — оказалось,
+    промо-блок теперь не рендерится, пока баннер не закрыт, хотя раньше
+    рендерился независимо от него): без этого фетч видел пустую страницу,
+    хотя настоящий контент был на месте, просто ждал согласия. Не привязано
+    к efbet — на случай, если другие сайты начнут вести себя так же.
+    Молча ничего не делает, если баннера нет (большинство сайтов) — это не
+    обязательный шаг, а подстраховка."""
+    for text in COOKIE_CONSENT_BUTTON_TEXTS:
+        try:
+            page.click(f"text={text}", timeout=1500)
+            logger.debug("Баннер cookie закрыт кнопкой %r", text)
+            return
+        except Exception:
+            continue
+
+
 def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str):
     from playwright.sync_api import sync_playwright
 
@@ -109,6 +143,7 @@ def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str):
         # некоторых сайтах (palmsbet.bg) он дорендеривается заметно дольше
         # фиксированных 2-3 секунд, из-за чего блок не успевал подгрузиться.
         page.goto(url, timeout=REQUEST_TIMEOUT * 1000, wait_until="domcontentloaded")
+        _dismiss_cookie_banner(page)
         try:
             page.wait_for_selector(selector, timeout=15000)
         except Exception:
