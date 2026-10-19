@@ -13,7 +13,7 @@ from .utils import (
     USER_AGENT,
     FetchResult,
     detect_antibot,
-    extract_block_text,
+    extract_blocks,
     is_allowed_by_robots,
 )
 
@@ -40,7 +40,7 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
     antibot_seen = False  # ...и хотя бы раз это сопровождалось маркером антибота
     for attempt in range(MAX_RETRIES + 1):
         try:
-            html, screenshot = _render_page(url, cookies, selector)
+            html, screenshot, final_url = _render_page(url, cookies, selector)
         except Exception as exc:  # таймауты, навигационные ошибки Playwright
             last_error = str(exc)
             logger.warning("Попытка %d/%d (JS) для %s не удалась: %s", attempt + 1, MAX_RETRIES + 1, url, exc)
@@ -57,8 +57,8 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
             # здесь намеренно НЕ проверяем: у него самого есть широкие маркеры
             # (recaptcha, datadome...), которые легко встретить на совершенно
             # рабочей странице по не связанной с блокировкой причине (см. ниже).
-            text = "\n".join(extract_block_text(block) for block in blocks)
-            return FetchResult(status="ok", text=text, screenshot=screenshot)
+            text, links = extract_blocks(blocks, final_url)
+            return FetchResult(status="ok", text=text, screenshot=screenshot, links=links)
 
         # Пустой результат — тут уже стоит спросить detect_antibot, ПОЧЕМУ:
         # либо блок на этом прогоне отрисовался медленнее, чем wait_for_selector
@@ -164,5 +164,9 @@ def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str):
             except Exception:
                 logger.debug("Не удалось сделать скриншот для %s", url)
 
+        # Итоговый адрес (после возможных редиректов) — от него разворачиваются
+        # относительные ссылки на акции (см. extract_blocks).
+        final_url = page.url or url
+
         browser.close()
-        return html, screenshot
+        return html, screenshot, final_url

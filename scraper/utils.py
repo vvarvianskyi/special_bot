@@ -4,8 +4,8 @@ import logging
 import re
 import urllib.robotparser
 from dataclasses import dataclass
-from typing import Optional
-from urllib.parse import urlparse
+from typing import Dict, Iterator, List, Optional, Tuple
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -57,6 +57,7 @@ class FetchResult:
     text: Optional[str] = None
     error: Optional[str] = None
     screenshot: Optional[bytes] = None  # PNG промо-блока, только для render: js (см. js_fetcher.py)
+    links: Optional[Dict[str, str]] = None  # строка акции -> ссылка на неё (см. extract_blocks)
 
 
 def is_allowed_by_robots(url: str, user_agent: str = USER_AGENT) -> bool:
@@ -131,7 +132,11 @@ def extract_block_text(block) -> str:
     вложенных <img> как отпечаток контента: смена акции обычно означает
     загрузку нового файла баннера с новым именем/URL, так что сравнение
     по-прежнему ловит изменение, просто без читаемого diff текста."""
-    text = block.get_text(separator=" ", strip=True)
+    # " ".join(split()) — блок всегда ровно одна строка: текст карточки может
+    # содержать внутренние переводы строк из исходной вёрстки, а ниже строка
+    # используется как ключ для ссылки на акцию (см. extract_blocks), и
+    # одна акция не должна распадаться на несколько строк отчёта.
+    text = " ".join(block.get_text(separator=" ", strip=True).split())
     if text:
         return text
 
@@ -140,3 +145,72 @@ def extract_block_text(block) -> str:
         images.append(block)
     sources = [img.get("src") or img.get("data-src") or "" for img in images]
     return " ".join(s for s in sources if s)
+
+
+# Ссылки на вход/регистрацию внутри промо-карточки (кнопка "Вход" на 8888.bg и
+# т.п.) — это не ссылка на саму акцию, их пропускаем.
+_AUTH_PATH_RE = re.compile(r"(^|/)(login|log-in|signin|sign-in|register|registration|signup|sign-up)(/|$)", re.I)
+
+
+def _candidate_hrefs(block) -> Iterator[str]:
+    if getattr(block, "name", None) == "a" and block.get("href"):
+        yield block["href"]
+    if hasattr(block, "find_all"):
+        for anchor in block.find_all("a", href=True):
+            yield anchor["href"]
+    parent = block.find_parent("a", href=True) if hasattr(block, "find_parent") else None
+    if parent is not None:
+        yield parent["href"]
+
+
+def _page_key(url: str) -> Tuple[str, str]:
+    parsed = urlparse(url)
+    return parsed.netloc.lower(), parsed.path.rstrip("/")
+
+
+def extract_block_link(block, base_url: str) -> Optional[str]:
+    """Ссылка на конкретную акцию из промо-блока или None, если её нет.
+
+    Сайты делятся на два типа: у части (inbet/winbet/sesame) сама карточка —
+    <a> с deep-link на страницу акции; у остальных карточка открывается
+    JS-обработчиком (button/div/Angular-компонент) и адреса акции в разметке
+    просто нет. Ссылку на сам список акций (адрес страницы, которую мы и так
+    мониторим) и ссылки на вход/регистрацию за "ссылку на акцию" не считаем —
+    для них отчёт подставит общий fallback на страницу промоций сайта.
+    Принимаются только http(s): содержимое чужих сайтов, javascript: и т.п.
+    в отчёт не попадёт."""
+    base_key = _page_key(base_url)
+    for href in _candidate_hrefs(block):
+        href = (href or "").strip()
+        if not href or href.startswith("#"):
+            continue
+        absolute = urljoin(base_url, href)
+        parsed = urlparse(absolute)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            continue
+        if _AUTH_PATH_RE.search(parsed.path):
+            continue
+        if _page_key(absolute) == base_key:
+            continue
+        return absolute
+    return None
+
+
+def extract_blocks(blocks, base_url: str) -> Tuple[str, Dict[str, str]]:
+    """Текст всех блоков (по строке на блок) + карта "текст строки -> ссылка на акцию".
+
+    Ссылки возвращаются отдельно от текста намеренно: текст идёт в хэш/diff,
+    и смена одного только URL не должна считаться изменением акции. Ключ
+    карты — сама строка блока: у двух блоков с одинаковым полным текстом
+    акция одна и та же, берётся первая найденная ссылка."""
+    lines: List[str] = []
+    links: Dict[str, str] = {}
+    for block in blocks:
+        line = extract_block_text(block)
+        lines.append(line)
+        if not line or line in links:
+            continue
+        link = extract_block_link(block, base_url)
+        if link:
+            links[line] = link
+    return "\n".join(lines), links

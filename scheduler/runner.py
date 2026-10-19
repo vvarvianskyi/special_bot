@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from diff.differ import compute_hash, generate_diff, truncate
+from diff.differ import compute_hash, generate_diff
 from scraper.auth_session import parse_cookie_header, require_credentials
 from scraper.js_fetcher import fetch_js
 from scraper.static_fetcher import fetch_static
@@ -146,6 +146,7 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         return row
 
     new_text = result.text
+    new_links = result.links or {}
     new_hash = compute_hash(new_text)
     last = get_last_snapshot(site_id, db_path)
 
@@ -155,10 +156,16 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
 
     if last is not None and last.hash == new_hash:
         logger.info("%s: изменений нет", site_id)
-        save_snapshot(Snapshot(site_id=site_id, timestamp=now, raw_text=new_text, hash=new_hash), db_path)
+        save_snapshot(
+            Snapshot(site_id=site_id, timestamp=now, raw_text=new_text, hash=new_hash, links=new_links), db_path
+        )
         row["status"] = "unchanged"
-        row["old_text"] = truncate(last.raw_text, 300)
-        row["new_text"] = truncate(new_text, 300)
+        # Полный текст, без обрезки — раньше резалось на 300 символах с "…", и
+        # из 8-60 акций сайта в отчёте оставались первые 3-4.
+        row["old_text"] = last.raw_text
+        row["new_text"] = new_text
+        row["old_links"] = last.links or {}
+        row["new_links"] = new_links
         # Изменений нет — "Преди" показывает, с какой даты висит эта (та же
         # самая) версия. "Сега" остаётся дефолтным now: даже без изменений
         # бот только что её проверил.
@@ -170,8 +177,10 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         diff_text = generate_diff(last.raw_text, new_text)
         logger.info("%s: обнаружено изменение промо\n%s", site_id, diff_text)
         row["status"] = "changed"
-        row["old_text"] = truncate(last.raw_text, 300)
-        row["new_text"] = truncate(new_text, 300)
+        row["old_text"] = last.raw_text
+        row["new_text"] = new_text
+        row["old_links"] = last.links or {}
+        row["new_links"] = new_links
         # "Преди" — с какой даты висела старая версия (когда сменилась в
         # последний раз до этого). "Сега" — дефолтный now (см. выше).
         row["old_since"] = since or ""
@@ -183,10 +192,13 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
     else:
         logger.info("%s: первый снапшот сохранён (базовая линия)", site_id)
         row["status"] = "baseline"
-        row["new_text"] = truncate(new_text, 300)
+        row["new_text"] = new_text
+        row["new_links"] = new_links
         # Нет предыдущей версии для сравнения — "Преди" остаётся пустым.
 
-    save_snapshot(Snapshot(site_id=site_id, timestamp=now, raw_text=new_text, hash=new_hash), db_path)
+    save_snapshot(
+        Snapshot(site_id=site_id, timestamp=now, raw_text=new_text, hash=new_hash, links=new_links), db_path
+    )
     return row
 
 

@@ -13,7 +13,7 @@ from .utils import (
     USER_AGENT,
     FetchResult,
     detect_antibot,
-    extract_block_text,
+    extract_blocks,
     is_allowed_by_robots,
 )
 
@@ -53,8 +53,8 @@ def fetch_static(url: str, selector: str, cookies: Optional[Dict[str, str]] = No
         # Реальный контент найден — точно не заблокировано, даже если где-то на
         # странице упоминается антибот-виджет по не связанной причине (см. тот
         # же порядок проверки и объяснение в scraper/js_fetcher.py).
-        text = "\n".join(extract_block_text(block) for block in blocks)
-        return FetchResult(status="ok", text=text)
+        text, links = extract_blocks(blocks, resp.url or url)
+        return FetchResult(status="ok", text=text, links=links)
 
     if detect_antibot(html):
         return FetchResult(status="blocked_by_antibot", error="Обнаружена антибот-защита (challenge-страница)")
