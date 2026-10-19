@@ -5,8 +5,9 @@
 
 import logging
 import time
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
+from .link_apis import match_titles_to_lines, parse_captured
 from .utils import (
     MAX_RETRIES,
     REQUEST_TIMEOUT,
@@ -26,6 +27,7 @@ def fetch_js(
     selector: str,
     cookies: Optional[Dict[str, str]] = None,
     id_attr: Optional[str] = None,
+    link_api: Optional[Dict[str, str]] = None,
 ) -> FetchResult:
     if not is_allowed_by_robots(url):
         logger.warning("robots.txt запрещает доступ к %s — пропускаем", url)
@@ -46,7 +48,7 @@ def fetch_js(
     antibot_seen = False  # ...и хотя бы раз это сопровождалось маркером антибота
     for attempt in range(MAX_RETRIES + 1):
         try:
-            html, screenshot, final_url = _render_page(url, cookies, selector)
+            html, screenshot, final_url, api_payloads = _render_page(url, cookies, selector, link_api)
         except Exception as exc:  # таймауты, навигационные ошибки Playwright
             last_error = str(exc)
             logger.warning("Попытка %d/%d (JS) для %s не удалась: %s", attempt + 1, MAX_RETRIES + 1, url, exc)
@@ -64,6 +66,20 @@ def fetch_js(
             # (recaptcha, datadome...), которые легко встретить на совершенно
             # рабочей странице по не связанной с блокировкой причине (см. ниже).
             text, links = extract_blocks(blocks, final_url)
+            if link_api and api_payloads:
+                # Адреса из API списка (см. link_apis.py) — для сайтов, где в
+                # разметке у карточки ссылки нет. Адрес прямо из разметки, если
+                # он есть, главнее: он ровно у этой карточки, без сопоставления.
+                # База для путей — НАСТРОЕННЫЙ адрес списка (url), а не итоговый
+                # (final_url): MrBit при открытии списка сам перекидывает на
+                # страницу первой акции (.../offers/<slug>), и пути, собранные от
+                # неё, давали .../offers/<slug>/<slug> -> 404.
+                pairs = parse_captured(link_api.get("parser", ""), api_payloads, url)
+                api_links = match_titles_to_lines(text.splitlines(), pairs)
+                logger.info(
+                    "%s: адресов из API списка — %d (из %d строк акций)", url, len(api_links), len(text.splitlines())
+                )
+                links = {**api_links, **links}
             ids = extract_block_ids(blocks, id_attr) if id_attr else None
             return FetchResult(status="ok", text=text, screenshot=screenshot, links=links, ids=ids)
 
@@ -127,7 +143,12 @@ def _dismiss_cookie_banner(page) -> None:
             continue
 
 
-def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str):
+def _render_page(
+    url: str,
+    cookies: Optional[Dict[str, str]],
+    selector: str,
+    link_api: Optional[Dict[str, str]] = None,
+):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
@@ -144,6 +165,22 @@ def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str):
                 ]
             )
         page = context.new_page()
+
+        # Перехват JSON-ответа, которым сайт сам грузит список акций (см.
+        # link_apis.py). Подписка — ДО goto: ответ приходит во время загрузки.
+        api_payloads: List[Any] = []
+        if link_api and link_api.get("url_contains"):
+            needle = link_api["url_contains"]
+
+            def _capture(response) -> None:
+                if needle in response.url:
+                    try:
+                        api_payloads.append(response.json())
+                    except Exception:
+                        logger.debug("Ответ %s не разобрался как JSON", response.url)
+
+            page.on("response", _capture)
+
         # "networkidle" не подходит для сайтов live-ставок/казино: у них почти
         # всегда идёт фоновый поллинг коэффициентов, и networkidle просто никогда
         # не наступает. Ждём загрузки DOM, а затем — конкретно промо-блок: на
@@ -176,4 +213,4 @@ def _render_page(url: str, cookies: Optional[Dict[str, str]], selector: str):
         final_url = page.url or url
 
         browser.close()
-        return html, screenshot, final_url
+        return html, screenshot, final_url, api_payloads

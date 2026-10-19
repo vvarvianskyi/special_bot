@@ -111,9 +111,15 @@ def _publish_to_pages(docs_html_path: Path) -> None:
     import subprocess
 
     rel_path = docs_html_path.relative_to(BASE_DIR)
+    # Вместе со страницей уходят снимки итогового блока акций (docs/promo, см.
+    # scraper/popup_shots.py) — иначе ссылки на них на публичной странице не откроются.
+    paths = [str(rel_path)]
+    promo_dir = docs_html_path.parent / "promo"
+    if promo_dir.exists():
+        paths.append(str(promo_dir.relative_to(BASE_DIR)))
     try:
         subprocess.run(
-            ["git", "add", str(rel_path)], cwd=BASE_DIR, check=True, capture_output=True, text=True
+            ["git", "add", "-A", "--", *paths], cwd=BASE_DIR, check=True, capture_output=True, text=True
         )
         staged = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=BASE_DIR)
         if staged.returncode == 0:
@@ -156,11 +162,12 @@ def run_once(stagger_seconds: int) -> None:
         build_report(rows, report_path)
 
         html_path = REPORTS_DIR / "latest.html"
-        build_html_report(rows, html_path)
+        # reports/latest.html на уровень глубже docs/ — снимки открываются по ../docs/promo/
+        build_html_report(rows, html_path, shots_prefix="../docs/promo/")
         logger.info("HTML-отчёт обновлён: %s", html_path)
 
         docs_path = DOCS_DIR / "index.html"
-        build_html_report(rows, docs_path, include_screenshots=False)
+        build_html_report(rows, docs_path, include_screenshots=False, shots_prefix="promo/")
         try:
             _publish_to_pages(docs_path)
         except Exception:

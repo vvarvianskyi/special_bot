@@ -46,41 +46,54 @@ def _format_details(line: str, description: str, fallback_url: str) -> str:
     )
 
 
+def _anchor(href: str, label: str, title: str = "") -> str:
+    title_attr = f' title="{html.escape(title, quote=True)}"' if title else ""
+    return (
+        f'<div class="line"><a href="{html.escape(href, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer"{title_attr}>{label}</a></div>'
+    )
+
+
 def _format_multiline(
     text: str,
     links: Dict[str, str] = None,
     fallback_url: str = "",
     details: Dict[str, str] = None,
+    shots: Dict[str, str] = None,
+    shots_prefix: str = "",
 ) -> str:
     """Каждая строка акции — отдельный блок с отступом, а не слипшийся текст
     (было: white-space:pre-wrap без интервалов между пунктами списка).
 
-    Строка становится ссылкой: на саму акцию, если сайт отдал её адрес
-    (links), иначе — на страницу промоций сайта (fallback_url): у части сайтов
-    карточка открывается JS-обработчиком и адреса акции в разметке просто нет.
-    Если для строки есть полное описание (details — сайты, где карточка это
-    popup без URL), она раскрывается в это описание на месте.
+    Что открывается по клику на строку (по убыванию точности):
+    1. адрес самой акции (links) — у Inbet/Winbet/Sesame он есть в разметке, у
+       MrBit/Betano/AdmiralBet/efbet берётся из API списка (scraper/link_apis.py);
+    2. снимок итогового блока (shots) — у сайтов, где акция открывается popup'ом
+       без URL (8888.bg), бот открыл его в браузере и снял;
+    3. раскрывающееся полное описание (details) — если снимок снять не удалось;
+    4. страница промоций сайта (fallback_url) — когда ничего точнее нет.
     Без fallback_url (ошибочные статусы — там "строки" это текст ошибки, а не
-    акции) такие строки остаются обычным текстом."""
+    акции) строки остаются обычным текстом."""
     links = links or {}
     details = details or {}
+    shots = shots or {}
     lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
     if not lines:
         return ""
     parts = []
     for line in lines:
-        if fallback_url and details.get(line):
-            parts.append(_format_details(line, details[line], fallback_url))
-            continue
         escaped = html.escape(line)
         own_link = links.get(line)
-        target = own_link or fallback_url
-        if target and _is_http_url(target):
-            title = "" if own_link else ' title="Към страницата с промоциите на сайта"'
+        if fallback_url and own_link and _is_http_url(own_link):
+            parts.append(_anchor(own_link, escaped))
+        elif fallback_url and shots.get(line):
             parts.append(
-                f'<div class="line"><a href="{html.escape(target, quote=True)}" '
-                f'target="_blank" rel="noopener noreferrer"{title}>{escaped}</a></div>'
+                _anchor(shots_prefix + shots[line], escaped, "Снимка на отворената промоция (какво вижда посетителят на сайта)")
             )
+        elif fallback_url and details.get(line):
+            parts.append(_format_details(line, details[line], fallback_url))
+        elif fallback_url and _is_http_url(fallback_url):
+            parts.append(_anchor(fallback_url, escaped, "Към страницата с промоциите на сайта"))
         else:
             parts.append(f'<div class="line">{escaped}</div>')
     return "".join(parts)
@@ -92,13 +105,15 @@ def _format_cell(
     links: Dict[str, str] = None,
     fallback_url: str = "",
     details: Dict[str, str] = None,
+    shots: Dict[str, str] = None,
+    shots_prefix: str = "",
 ) -> str:
     """Текст версии промо + с какой даты она стоит на сайте.
 
     Дата берётся не из времени проверки (бот ходит каждый час), а из момента
     появления этой версии — чтобы было видно "старая акция висела с 01.09,
     новая появилась 14.09", а не "проверено час назад" в обеих колонках."""
-    body = _format_multiline(text, links, fallback_url, details)
+    body = _format_multiline(text, links, fallback_url, details, shots, shots_prefix)
     if not since:
         return body
     return f'<div class="since">от {html.escape(format_timestamp(since))}</div>{body}'
@@ -124,7 +139,12 @@ def _status_cell(row: Dict[str, Any]) -> str:
     )
 
 
-def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screenshots: bool = True) -> Path:
+def build_html_report(
+    rows: List[Dict[str, Any]],
+    out_path: Path,
+    include_screenshots: bool = True,
+    shots_prefix: str = "promo/",
+) -> Path:
     """include_screenshots=False — для публичной версии (GitHub Pages/шаринг):
     скриншоты лежат локально на диске (Desktop\\Result), file:// ссылки на них
     ни у кого, кроме этого ПК, не откроются, так что там их просто не показываем."""
@@ -150,8 +170,15 @@ def build_html_report(rows: List[Dict[str, Any]], out_path: Path, include_screen
         # Описания есть только у текущих акций; для строк "Преди", которые
         # остались прежними, подходят те же (совпадение по тексту строки).
         details = row.get("new_details") or {}
-        old_text = _format_cell(row.get("old_text", ""), row.get("old_since", ""), old_links, fallback_url, details)
-        new_text = _format_cell(row.get("new_text", ""), row.get("new_since", ""), new_links, fallback_url, details)
+        # Снимки итогового блока (сайты без URL у акции): только для текущих акций,
+        # как и описания — для строк "Преди", что остались прежними, подходят те же.
+        shots = row.get("promo_shots") or {}
+        old_text = _format_cell(
+            row.get("old_text", ""), row.get("old_since", ""), old_links, fallback_url, details, shots, shots_prefix
+        )
+        new_text = _format_cell(
+            row.get("new_text", ""), row.get("new_since", ""), new_links, fallback_url, details, shots, shots_prefix
+        )
         timestamp = html.escape(format_timestamp(row.get("timestamp", "")))
 
         screenshot_cell = ""

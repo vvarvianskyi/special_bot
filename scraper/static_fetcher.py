@@ -26,6 +26,7 @@ def fetch_static(
     selector: str,
     cookies: Optional[Dict[str, str]] = None,
     id_attr: Optional[str] = None,
+    link_api: Optional[Dict[str, str]] = None,  # только для render: js (перехват API страницы)
 ) -> FetchResult:
     if not is_allowed_by_robots(url):
         logger.warning("robots.txt запрещает доступ к %s — пропускаем", url)

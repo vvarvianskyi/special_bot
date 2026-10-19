@@ -14,6 +14,16 @@ sites:
       url: "https://8888.bg/bonuses/detail/?id={id}"
       content_selector: ".bonus-detail-content"
       drop_selectors: [".bonus-cardbox"]  # дубль баннера карточки в начале popup'а
+    # "Дойти до конца": у popup'а нет адреса вообще, поэтому Playwright открывает
+    # его и снимает итоговый блок акции (scraper/popup_shots.py) — клик по акции в
+    # отчёте открывает этот снимок. Пересоздаётся, только когда акция изменилась.
+    popup_shots:
+      id_attr: data-bonus-id
+      open_selector: "a.absolute-full"
+      ready_selector: ".bonus-detail-content-wrapper"
+      popup_selector: ".popup-overlay.state-popup-open .popup-box"
+      close_selector: ".popup-close"
+      id_selector: "[data-bonus-id]"
 
   - id: inbet
     name: "Inbet"
@@ -45,6 +55,12 @@ sites:
     access: public
     render: js
     selector: ".promotions-event-preview_custom-offer"
+    # Карточка открывается JS-обработчиком, <a href> нет. Адреса берём из JSON,
+    # которым сама страница грузит список (scraper/link_apis.py): без кликов и
+    # без лишних запросов. Slug из items[].url -> <страница списка>/<slug>.
+    link_api:
+      parser: mrbit
+      url_contains: "api/offers/list"
 
   - id: sesame
     name: "Sesame"
@@ -63,6 +79,12 @@ sites:
     # он менее устойчив к редизайну, чем семантические классы у других
     # сайтов — если поедет "no_selector_match", смотреть сюда в первую очередь.
     selector: '.cui-relative.cui-box-border.cui-cursor-pointer.cui-overflow-hidden'
+    # Адреса плиток — из /api/bonus/stories (onClickAction.navigationUrl): у части
+    # это страницы, у части панель на главной (/?panel=calendar&id=...), у
+    # некоторых плиток адреса нет вовсе — они остаются со ссылкой на главную.
+    link_api:
+      parser: betano
+      url_contains: "api/bonus/stories?section=1"
 
   - id: admiralbet
     name: "AdmiralBet"
@@ -70,6 +92,10 @@ sites:
     access: public
     render: js
     selector: "xbet-promotion-banner-full-card"
+    # Адреса — из GetLayout?id=promotions (PromotionBanner.buttons[].navigationValue).
+    link_api:
+      parser: admiralbet
+      url_contains: "GetLayout?id=promotions"
 
   - id: efbet
     name: "efbet"
@@ -79,6 +105,11 @@ sites:
     # CSS-module класс с хэш-суффиксом (...___YpcKb) — суффикс меняется при
     # пересборке фронтенда сайта, поэтому матчим по стабильной части имени.
     selector: '[class*="PromotionItem-module__Container"]'
+    # Адрес акции = /promotions/<категория>/<titleEn>, собирается из ответа
+    # categories/promotions по правилу, сверенному с реальными кликами.
+    link_api:
+      parser: efbet
+      url_contains: "categories/promotions"
 
   # Elitbet — исключён из мониторинга: акции там картинки-баннеры без текста
   # в DOM, отчёт по нему получался сплошным списком src-ссылок на изображения
