@@ -111,8 +111,8 @@ def _publish_to_pages(docs_html_path: Path) -> None:
     import subprocess
 
     rel_path = docs_html_path.relative_to(BASE_DIR)
-    # Вместе со страницей уходят снимки итогового блока акций (docs/promo, см.
-    # scraper/popup_shots.py) — иначе ссылки на них на публичной странице не откроются.
+    # Вместе со страницей уходят страницы-карточки акций (docs/promo, см.
+    # notify/card_page.py) — иначе ссылки на них на публичной странице не откроются.
     paths = [str(rel_path)]
     promo_dir = docs_html_path.parent / "promo"
     if promo_dir.exists():
@@ -162,12 +162,12 @@ def run_once(stagger_seconds: int) -> None:
         build_report(rows, report_path)
 
         html_path = REPORTS_DIR / "latest.html"
-        # reports/latest.html на уровень глубже docs/ — снимки открываются по ../docs/promo/
-        build_html_report(rows, html_path, shots_prefix="../docs/promo/")
+        # reports/latest.html на уровень глубже docs/ — страницы-карточки открываются по ../docs/promo/
+        build_html_report(rows, html_path, cards_prefix="../docs/promo/")
         logger.info("HTML-отчёт обновлён: %s", html_path)
 
         docs_path = DOCS_DIR / "index.html"
-        build_html_report(rows, docs_path, include_screenshots=False, shots_prefix="promo/")
+        build_html_report(rows, docs_path, include_screenshots=False, cards_prefix="promo/")
         try:
             _publish_to_pages(docs_path)
         except Exception:

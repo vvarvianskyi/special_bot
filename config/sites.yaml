@@ -5,25 +5,20 @@ sites:
     access: public
     render: js
     selector: ".bonus-cardbox"
-    # Карточка открывается popup'ом БЕЗ своего URL (адрес не меняется), так что
-    # ссылкой на конкретную акцию это не сделать. Полное описание берём из того
-    # же JSON-эндпоинта, что вызывает сам сайт при клике (robots.txt разрешает),
-    # и отчёт показывает его раскрывающейся строкой — см. scraper/details.py.
-    details:
+    # Карточка акции — popup БЕЗ своего URL (адрес не меняется; проверено: 14 вариантов
+    # адреса, JS сайта и sitemap), так что ссылки, открывающей её на самом сайте,
+    # не существует. Текст правил и условий берём из того же JSON-эндпоинта, что
+    # вызывает сам сайт при клике (robots.txt разрешает), и собираем из него
+    # страницу-карточку (notify/card_page.py) — по клику на акцию в отчёте
+    # открывается она. Внутри карточек у двух акций есть настоящие страницы сайта
+    # (/promo/bonus_casino, /promo/bonus_sport) — они показываются на странице.
+    card_pages:
       id_attr: data-bonus-id
       url: "https://8888.bg/bonuses/detail/?id={id}"
       content_selector: ".bonus-detail-content"
       drop_selectors: [".bonus-cardbox"]  # дубль баннера карточки в начале popup'а
-    # "Дойти до конца": у popup'а нет адреса вообще, поэтому Playwright открывает
-    # его и снимает итоговый блок акции (scraper/popup_shots.py) — клик по акции в
-    # отчёте открывает этот снимок. Пересоздаётся, только когда акция изменилась.
-    popup_shots:
-      id_attr: data-bonus-id
-      open_selector: "a.absolute-full"
-      ready_selector: ".bonus-detail-content-wrapper"
-      popup_selector: ".popup-overlay.state-popup-open .popup-box"
-      close_selector: ".popup-close"
-      id_selector: "[data-bonus-id]"
+    # В отчёте — в самом низу таблицы: открыть карточку прямо на сайте нельзя.
+    report_bottom: true
 
   - id: inbet
     name: "Inbet"
@@ -79,12 +74,14 @@ sites:
     # он менее устойчив к редизайну, чем семантические классы у других
     # сайтов — если поедет "no_selector_match", смотреть сюда в первую очередь.
     selector: '.cui-relative.cui-box-border.cui-cursor-pointer.cui-overflow-hidden'
-    # Адреса плиток — из /api/bonus/stories (onClickAction.navigationUrl): у части
-    # это страницы, у части панель на главной (/?panel=calendar&id=...), у
-    # некоторых плиток адреса нет вовсе — они остаются со ссылкой на главную.
-    link_api:
-      parser: betano
-      url_contains: "api/bonus/stories?section=1"
+    # Ссылок на конкретные акции нет: адреса из /api/bonus/stories ведут либо на
+    # главную с "панелью" (/?panel=calendar&id=...), которая у обычного посетителя
+    # просто показывает список матчей, либо в раздел за логином (/fantasy,
+    # /lounge/...). Это не страницы акций — ссылками их делать было бы обманом.
+    # Кроме того, при тестовых заходах сайт показывает "Access is temporarily
+    # restricted" (его защита от автоматизации — не обходится, см. README).
+    # В отчёте — в самом низу таблицы.
+    report_bottom: true
 
   - id: admiralbet
     name: "AdmiralBet"

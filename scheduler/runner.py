@@ -18,9 +18,9 @@ import yaml
 
 from diff.differ import compute_hash, generate_diff, normalize_text
 from scraper.auth_session import parse_cookie_header, require_credentials
+from notify.card_page import build_card_page
 from scraper.details import fetch_details
 from scraper.js_fetcher import fetch_js
-from scraper.popup_shots import capture_popup_shots
 from scraper.static_fetcher import fetch_static
 from storage.db import (
     DEFAULT_DB_PATH,
@@ -40,9 +40,9 @@ DEFAULT_SITES_PATH = CONFIG_DIR / "sites.yaml"
 # чтобы можно было визуально сверить, что именно поменялось на сайте.
 RESULTS_DIR = Path.home() / "Desktop" / "Result"
 
-# Снимки итогового блока акций (сайты без URL у карточки — 8888.bg). Лежат в docs/,
-# чтобы уходить на GitHub Pages вместе с отчётом (см. main._publish_to_pages).
-PROMO_SHOTS_DIR = Path(__file__).resolve().parent.parent / "docs" / "promo"
+# Страницы-карточки акций (сайты без URL у карточки — 8888.bg). Лежат в docs/, чтобы
+# уходить на GitHub Pages вместе с отчётом (см. main._publish_to_pages).
+PROMO_CARDS_DIR = Path(__file__).resolve().parent.parent / "docs" / "promo"
 
 # Статусы, которые не считаются "без изменений" — используются, чтобы решить,
 # стоит ли слать письмо, если включён REPORT_ONLY_ON_CHANGES.
@@ -104,37 +104,49 @@ def _save_screenshot(site_id: str, timestamp: str, screenshot: Optional[bytes]) 
         return None
 
 
-def promo_shot_name(site_id: str, promo_id: str, line: str, description: str) -> str:
-    """Имя файла снимка акции: в нём хэш содержимого (строка карточки + полное
-    описание), поэтому снимок пересоздаётся, только когда акция реально изменилась.
-    Хэш от самой картинки не годится: таймеры и анимации делают байты разными
-    каждый прогон, и репозиторий публичной страницы рос бы на мегабайты в сутки."""
+def promo_card_name(site_id: str, promo_id: str, line: str, description: str) -> str:
+    """Имя файла страницы-карточки: в нём хэш содержимого (строка карточки + полный
+    текст правил), поэтому страница пересоздаётся, только когда акция реально
+    изменилась — а не каждый прогон (иначе в git каждый день попадали бы новые
+    файлы, а дата на странице не означала бы ничего)."""
     content = normalize_text(line) + "\n" + (description or "")
-    return f"{site_id}-{promo_id}-{hashlib.sha1(content.encode('utf-8')).hexdigest()[:10]}.jpg"
+    return f"{site_id}-{promo_id}-{hashlib.sha1(content.encode('utf-8')).hexdigest()[:10]}.html"
 
 
-def ensure_promo_shots(
+def ensure_card_pages(
     site_id: str,
-    url: str,
-    selector: str,
-    cfg: Dict[str, Any],
+    site_name: str,
+    site_url: str,
     ids: Dict[str, str],
-    descriptions: Dict[str, str],
+    details: Dict[str, Dict[str, Any]],
+    created_at: str,
 ) -> Dict[str, str]:
-    """{строка акции: имя файла снимка} — снимает недостающие, существующие не трогает."""
-    names = {line: promo_shot_name(site_id, pid, line, descriptions.get(line, "")) for line, pid in ids.items()}
-    wanted = {
-        ids[line]: PROMO_SHOTS_DIR / name for line, name in names.items() if not (PROMO_SHOTS_DIR / name).exists()
-    }
-    if wanted:
-        logger.info("%s: снимаем итоговый блок у %d акций (новые или изменившиеся)", site_id, len(wanted))
-        taken = capture_popup_shots(url, selector, cfg["id_attr"], cfg, wanted)
-        for pid in taken:
-            # Прежние версии снимка этой же акции больше не нужны — не копим их.
-            for old in PROMO_SHOTS_DIR.glob(f"{site_id}-{pid}-*.jpg"):
-                if old.name != wanted[pid].name:
+    """{строка акции: имя файла страницы-карточки}. Недостающие создаёт, существующие
+    не трогает. Акции без текста правил получают страницу из текста самой карточки."""
+    cards: Dict[str, str] = {}
+    for line, promo_id in ids.items():
+        info = details.get(line) or {}
+        text = info.get("text", "")
+        name = promo_card_name(site_id, promo_id, line, text)
+        path = PROMO_CARDS_DIR / name
+        if not path.exists():
+            body = text.splitlines() if text else [line]
+            build_card_page(
+                path,
+                site_name=site_name,
+                site_url=site_url,
+                heading=body[0] if text else line,
+                body_lines=body[1:] if text else [],
+                links=info.get("links", []),
+                created_at=created_at,
+                has_rules=bool(text),
+            )
+            # Прежние версии страницы этой же акции больше не нужны — не копим их.
+            for old in PROMO_CARDS_DIR.glob(f"{site_id}-{promo_id}-*.html"):
+                if old.name != name:
                     old.unlink(missing_ok=True)
-    return {line: name for line, name in names.items() if (PROMO_SHOTS_DIR / name).exists()}
+        cards[line] = name
+    return cards
 
 
 def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
@@ -176,14 +188,13 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         row["new_text"] = str(exc)
         return row
 
-    details_cfg = site.get("details") or {}
-    shots_cfg = site.get("popup_shots") or {}
+    cards_cfg = site.get("card_pages") or {}
     fetcher = fetch_js if render == "js" else fetch_static
     result = fetcher(
         url,
         selector,
         cookies=cookies,
-        id_attr=details_cfg.get("id_attr") or shots_cfg.get("id_attr"),
+        id_attr=cards_cfg.get("id_attr"),
         link_api=site.get("link_api"),
     )
 
@@ -195,14 +206,20 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
 
     new_text = result.text
     new_links = result.links or {}
-    # Описания акций у сайтов без URL карточки (sites.yaml -> details). Не
-    # сохраняются в базе: нужны только текущему отчёту, а любая ошибка тут
-    # (fetch_details сам ничего не бросает) не должна влиять на сравнение.
-    row["new_details"] = fetch_details(result.ids or {}, details_cfg) if details_cfg else {}
-    # "Дойти до конца": у popup'а нет URL, поэтому снимаем сам итоговый блок.
-    row["promo_shots"] = (
-        ensure_promo_shots(site_id, url, selector, shots_cfg, result.ids, row["new_details"])
-        if shots_cfg and result.ids
+    # Сайты без URL у карточки (sites.yaml -> card_pages): текст правил берётся тем же
+    # запросом, что делает сам сайт при клике, и из него собирается страница-карточка.
+    # Не сохраняется в базе и в хэш не входит: любая ошибка здесь (fetch_details сам
+    # ничего не бросает) не должна влиять на сравнение акций.
+    row["promo_cards"] = (
+        ensure_card_pages(
+            site_id,
+            site_name,
+            url,
+            result.ids,
+            fetch_details(result.ids, cards_cfg),
+            now,
+        )
+        if cards_cfg and result.ids
         else {}
     )
     new_hash = compute_hash(new_text)
@@ -324,6 +341,13 @@ def run_all(
             else:
                 logger.info("%s: повторная проверка снова не удалась", site["id"])
             rows[i] = retried_row
+
+    # Порядок в отчёте: сайты с report_bottom (где по клику на акцию нельзя попасть на
+    # её информацию — sites.yaml объясняет почему) уходят в самый низ таблицы.
+    # rows идут строго по sites (одна строка на сайт), так что флаги берём по индексу.
+    # Устойчивая сортировка: внутри каждой группы порядок из sites.yaml сохраняется.
+    bottom = [bool(site.get("report_bottom")) for site in sites]
+    rows = [r for r, b in zip(rows, bottom) if not b] + [r for r, b in zip(rows, bottom) if b]
 
     logger.info("Итог прогона: %s", {r["site_id"]: r["status"] for r in rows})
     return rows

@@ -1,6 +1,6 @@
 """Адреса акций из JSON, которым сайт сам подгружает список акций.
 
-У MrBit/Betano/AdmiralBet/efbet карточка открывается JS-обработчиком — <a href>
+У MrBit/AdmiralBet/efbet карточка открывается JS-обработчиком — <a href>
 в разметке нет, но сама страница получает список акций вместе с адресами из
 API (иначе она не смогла бы по клику перейти куда нужно). Playwright уже
 открыл страницу, поэтому достаточно перехватить этот ответ: никаких лишних
@@ -49,23 +49,6 @@ def parse_admiralbet(data: Any, page_url: str) -> List[Pair]:
     return pairs
 
 
-def parse_betano(data: Any, page_url: str) -> List[Pair]:
-    """storyGroups[]: thumbnail.title — название плитки, у историй
-    onClickAction.navigationUrl (или cta) — либо страница, либо панель на главной
-    вида /?panel=calendar&id=13194. У части плиток адреса нет вовсе (None)."""
-    pairs: List[Pair] = []
-    for group in (data or {}).get("storyGroups") or []:
-        title = ((group.get("thumbnail") or {}).get("title") or "").strip()
-        target = ""
-        for story in group.get("stories") or []:
-            target = ((story.get("onClickAction") or {}).get("navigationUrl") or story.get("cta") or "").strip()
-            if target:
-                break
-        if title and target:
-            pairs.append((title, urljoin(page_url, target)))
-    return pairs
-
-
 def parse_mrbit(data: Any, page_url: str) -> List[Pair]:
     """payload.items[]: title — название, url — slug вида trick-or-treat-cashback-117069;
     страница акции — <страница списка>/<slug> (проверено настоящим кликом)."""
@@ -110,7 +93,6 @@ def parse_efbet(data: Any, page_url: str) -> List[Pair]:
 
 PARSERS: Dict[str, Callable[[Any, str], List[Pair]]] = {
     "admiralbet": parse_admiralbet,
-    "betano": parse_betano,
     "mrbit": parse_mrbit,
     "efbet": parse_efbet,
 }

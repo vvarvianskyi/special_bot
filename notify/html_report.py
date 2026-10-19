@@ -27,25 +27,6 @@ def _is_http_url(url: str) -> bool:
     return url.lower().startswith(("http://", "https://"))
 
 
-def _format_details(line: str, description: str, fallback_url: str) -> str:
-    """Строка акции, раскрывающаяся в полное описание (нативный <details>, без JS
-    — работает и в локальном файле, и на GitHub Pages).
-
-    Для сайтов, где у карточки нет URL (popup без смены адреса) отдельной
-    ссылкой на неё не поделишься — зато описание можно показать здесь же."""
-    paragraphs = "".join(f"<p>{html.escape(p)}</p>" for p in description.splitlines() if p.strip())
-    site_link = ""
-    if fallback_url and _is_http_url(fallback_url):
-        site_link = (
-            f'<p class="promo-site-link"><a href="{html.escape(fallback_url, quote=True)}" '
-            f'target="_blank" rel="noopener noreferrer">Към страницата с промоциите на сайта ↗</a></p>'
-        )
-    return (
-        f'<div class="line"><details class="promo"><summary>{html.escape(line)}</summary>'
-        f'<div class="promo-detail">{paragraphs}{site_link}</div></details></div>'
-    )
-
-
 def _anchor(href: str, label: str, title: str = "") -> str:
     title_attr = f' title="{html.escape(title, quote=True)}"' if title else ""
     return (
@@ -58,26 +39,24 @@ def _format_multiline(
     text: str,
     links: Dict[str, str] = None,
     fallback_url: str = "",
-    details: Dict[str, str] = None,
-    shots: Dict[str, str] = None,
-    shots_prefix: str = "",
+    cards: Dict[str, str] = None,
+    cards_prefix: str = "",
 ) -> str:
     """Каждая строка акции — отдельный блок с отступом, а не слипшийся текст
     (было: white-space:pre-wrap без интервалов между пунктами списка).
 
     Что открывается по клику на строку (по убыванию точности):
     1. адрес самой акции (links) — у Inbet/Winbet/Sesame он есть в разметке, у
-       MrBit/Betano/AdmiralBet/efbet берётся из API списка (scraper/link_apis.py);
-    2. снимок итогового блока (shots) — у сайтов, где акция открывается popup'ом
-       без URL (8888.bg), бот открыл его в браузере и снял;
-    3. раскрывающееся полное описание (details) — если снимок снять не удалось;
-    4. страница промоций сайта (fallback_url) — когда ничего точнее нет.
+       MrBit/AdmiralBet/efbet берётся из API списка (scraper/link_apis.py);
+    2. страница-карточка с текстом правил и условий (cards) — у сайтов, где акция
+       открывается popup'ом без URL (8888.bg), такой адрес на самом сайте не
+       существует (notify/card_page.py);
+    3. страница промоций сайта (fallback_url) — когда ничего точнее нет.
     Строки, у которых точного адреса нет (п.4), выводятся ниже остальных.
     Без fallback_url (ошибочные статусы — там "строки" это текст ошибки, а не
     акции) строки остаются обычным текстом в прежнем порядке."""
     links = links or {}
-    details = details or {}
-    shots = shots or {}
+    cards = cards or {}
     lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
     if not lines:
         return ""
@@ -90,12 +69,8 @@ def _format_multiline(
         own_link = links.get(line)
         if fallback_url and own_link and _is_http_url(own_link):
             items.append((0, _anchor(own_link, escaped)))
-        elif fallback_url and shots.get(line):
-            items.append(
-                (0, _anchor(shots_prefix + shots[line], escaped, "Снимка на отворената промоция (какво вижда посетителят на сайта)"))
-            )
-        elif fallback_url and details.get(line):
-            items.append((0, _format_details(line, details[line], fallback_url)))
+        elif fallback_url and cards.get(line):
+            items.append((0, _anchor(cards_prefix + cards[line], escaped, "Карта с правилата и условията на промоцията")))
         elif fallback_url and _is_http_url(fallback_url):
             items.append((1, _anchor(fallback_url, escaped, "Към страницата с промоциите на сайта")))
         else:
@@ -109,16 +84,15 @@ def _format_cell(
     since: str,
     links: Dict[str, str] = None,
     fallback_url: str = "",
-    details: Dict[str, str] = None,
-    shots: Dict[str, str] = None,
-    shots_prefix: str = "",
+    cards: Dict[str, str] = None,
+    cards_prefix: str = "",
 ) -> str:
     """Текст версии промо + с какой даты она стоит на сайте.
 
     Дата берётся не из времени проверки (бот ходит каждый час), а из момента
     появления этой версии — чтобы было видно "старая акция висела с 01.09,
     новая появилась 14.09", а не "проверено час назад" в обеих колонках."""
-    body = _format_multiline(text, links, fallback_url, details, shots, shots_prefix)
+    body = _format_multiline(text, links, fallback_url, cards, cards_prefix)
     if not since:
         return body
     return f'<div class="since">от {html.escape(format_timestamp(since))}</div>{body}'
@@ -148,7 +122,7 @@ def build_html_report(
     rows: List[Dict[str, Any]],
     out_path: Path,
     include_screenshots: bool = True,
-    shots_prefix: str = "promo/",
+    cards_prefix: str = "promo/",
 ) -> Path:
     """include_screenshots=False — для публичной версии (GitHub Pages/шаринг):
     скриншоты лежат локально на диске (Desktop\\Result), file:// ссылки на них
@@ -172,17 +146,14 @@ def build_html_report(
         # В "Преди" берём ссылки из старого снапшота, а где их там не сохранено
         # (снапшот до появления ссылок или акция осталась прежней) — из текущих.
         old_links = {**new_links, **(row.get("old_links") or {})}
-        # Описания есть только у текущих акций; для строк "Преди", которые
-        # остались прежними, подходят те же (совпадение по тексту строки).
-        details = row.get("new_details") or {}
-        # Снимки итогового блока (сайты без URL у акции): только для текущих акций,
-        # как и описания — для строк "Преди", что остались прежними, подходят те же.
-        shots = row.get("promo_shots") or {}
+        # Страницы-карточек есть только у текущих акций (сайты без URL у акции); для
+        # строк "Преди", что остались прежними, подходят те же (совпадение по тексту).
+        cards = row.get("promo_cards") or {}
         old_text = _format_cell(
-            row.get("old_text", ""), row.get("old_since", ""), old_links, fallback_url, details, shots, shots_prefix
+            row.get("old_text", ""), row.get("old_since", ""), old_links, fallback_url, cards, cards_prefix
         )
         new_text = _format_cell(
-            row.get("new_text", ""), row.get("new_since", ""), new_links, fallback_url, details, shots, shots_prefix
+            row.get("new_text", ""), row.get("new_since", ""), new_links, fallback_url, cards, cards_prefix
         )
         timestamp = html.escape(format_timestamp(row.get("timestamp", "")))
 
@@ -228,13 +199,6 @@ def build_html_report(
   td.text-cell {{ max-width:360px; word-break:break-word; color:#333; }}
   td.text-cell .line {{ padding-block:4px; }}
   td.text-cell .line a {{ display:block; }}
-  td.text-cell details.promo summary {{ color:#2a5db0; cursor:pointer; }}
-  td.text-cell details.promo summary:hover {{ text-decoration:underline; }}
-  td.text-cell .promo-detail {{ margin:6px 0 4px; padding:8px 10px; background:#f7f6f2;
-                                border-left:3px solid #d9d6cb; border-radius:3px;
-                                font-size:12px; color:#444; }}
-  td.text-cell .promo-detail p {{ margin:0 0 6px; }}
-  td.text-cell .promo-detail .promo-site-link {{ margin:8px 0 0; }}
   td.text-cell .line + .line {{ border-top:1px solid #f0efe9; }}
   td.text-cell .since {{ display:inline-block; margin-bottom:8px; padding:2px 8px;
                          background:#f0efe9; border-radius:10px; color:#6b6b6b;
