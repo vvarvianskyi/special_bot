@@ -16,6 +16,7 @@
 import html
 from pathlib import Path
 from typing import List, Tuple
+from urllib.parse import urlparse
 
 from .formatting import format_timestamp
 
@@ -31,10 +32,19 @@ _STYLE = """
   ul { margin:0; padding-left:20px; }
   li { margin-bottom:4px; }
   a { color:#2a5db0; }
+  .dest { color:#888; font-size:12px; margin-left:6px; }
   .btn { display:inline-block; margin-top:22px; padding:10px 16px; background:#2a5db0; color:#fff;
          text-decoration:none; border-radius:5px; font-size:14px; }
   .note { margin-top:24px; padding-top:14px; border-top:1px solid #eee; font-size:12px; color:#777; }
 """
+
+
+def _short_url(url: str) -> str:
+    parsed = urlparse(url)
+    # Конечный слэш отбрасываем, только если за ним нет параметров: "/pages/?pr=155" —
+    # настоящий адрес, и подпись не должна показывать другой.
+    tail = f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path.rstrip("/")
+    return f"{parsed.netloc}{tail}"
 
 
 def build_card_page(
@@ -53,9 +63,11 @@ def build_card_page(
     paragraphs = "".join(f"<p>{html.escape(line)}</p>" for line in body_lines if line.strip())
     links_block = ""
     if links:
+        # Подпись ссылки в тексте карточки часто бессмысленна вне контекста ("тук!") —
+        # поэтому рядом всегда показывается, куда она ведёт.
         items = "".join(
             f'<li><a href="{html.escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">'
-            f"{html.escape(label)}</a></li>"
+            f'{html.escape(label)}</a> <span class="dest">{html.escape(_short_url(url))}</span></li>'
             for label, url in links
         )
         links_block = f"<h2>Връзки от карточката на сайта</h2><ul>{items}</ul>"
