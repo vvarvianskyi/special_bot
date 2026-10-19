@@ -72,31 +72,36 @@ def _format_multiline(
        без URL (8888.bg), бот открыл его в браузере и снял;
     3. раскрывающееся полное описание (details) — если снимок снять не удалось;
     4. страница промоций сайта (fallback_url) — когда ничего точнее нет.
+    Строки, у которых точного адреса нет (п.4), выводятся ниже остальных.
     Без fallback_url (ошибочные статусы — там "строки" это текст ошибки, а не
-    акции) строки остаются обычным текстом."""
+    акции) строки остаются обычным текстом в прежнем порядке."""
     links = links or {}
     details = details or {}
     shots = shots or {}
     lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
     if not lines:
         return ""
-    parts = []
+    # (ранг, html): ранг 0 — строка открывает именно свою акцию, ранг 1 — не открывает
+    # (общая ссылка на список или просто текст). Строки без точного адреса уходят
+    # вниз колонки: наверху то, по чему клик реально приводит к информации об акции.
+    items = []
     for line in lines:
         escaped = html.escape(line)
         own_link = links.get(line)
         if fallback_url and own_link and _is_http_url(own_link):
-            parts.append(_anchor(own_link, escaped))
+            items.append((0, _anchor(own_link, escaped)))
         elif fallback_url and shots.get(line):
-            parts.append(
-                _anchor(shots_prefix + shots[line], escaped, "Снимка на отворената промоция (какво вижда посетителят на сайта)")
+            items.append(
+                (0, _anchor(shots_prefix + shots[line], escaped, "Снимка на отворената промоция (какво вижда посетителят на сайта)"))
             )
         elif fallback_url and details.get(line):
-            parts.append(_format_details(line, details[line], fallback_url))
+            items.append((0, _format_details(line, details[line], fallback_url)))
         elif fallback_url and _is_http_url(fallback_url):
-            parts.append(_anchor(fallback_url, escaped, "Към страницата с промоциите на сайта"))
+            items.append((1, _anchor(fallback_url, escaped, "Към страницата с промоциите на сайта")))
         else:
-            parts.append(f'<div class="line">{escaped}</div>')
-    return "".join(parts)
+            items.append((1, f'<div class="line">{escaped}</div>'))
+    # sorted устойчива: внутри каждой группы порядок сайта сохраняется.
+    return "".join(markup for _, markup in sorted(items, key=lambda item: item[0]))
 
 
 def _format_cell(

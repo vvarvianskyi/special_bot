@@ -122,11 +122,6 @@ def ensure_promo_shots(
     descriptions: Dict[str, str],
 ) -> Dict[str, str]:
     """{строка акции: имя файла снимка} — снимает недостающие, существующие не трогает."""
-    if descriptions:
-        # Описания у сайта получены, а у этой акции его нет — значит, и popup'а у неё
-        # нет (8888.bg: LIVE-акция, клик по которой лишь просит войти). Иначе каждый
-        # прогон поднимал бы браузер ~на полминуты ради снимка, которого не будет.
-        ids = {line: pid for line, pid in ids.items() if descriptions.get(line)}
     names = {line: promo_shot_name(site_id, pid, line, descriptions.get(line, "")) for line, pid in ids.items()}
     wanted = {
         ids[line]: PROMO_SHOTS_DIR / name for line, name in names.items() if not (PROMO_SHOTS_DIR / name).exists()
