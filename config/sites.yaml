@@ -5,6 +5,15 @@ sites:
     access: public
     render: js
     selector: ".bonus-cardbox"
+    # Карточка открывается popup'ом БЕЗ своего URL (адрес не меняется), так что
+    # ссылкой на конкретную акцию это не сделать. Полное описание берём из того
+    # же JSON-эндпоинта, что вызывает сам сайт при клике (robots.txt разрешает),
+    # и отчёт показывает его раскрывающейся строкой — см. scraper/details.py.
+    details:
+      id_attr: data-bonus-id
+      url: "https://8888.bg/bonuses/detail/?id={id}"
+      content_selector: ".bonus-detail-content"
+      drop_selectors: [".bonus-cardbox"]  # дубль баннера карточки в начале popup'а
 
   - id: inbet
     name: "Inbet"

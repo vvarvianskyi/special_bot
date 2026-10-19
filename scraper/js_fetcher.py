@@ -13,6 +13,7 @@ from .utils import (
     USER_AGENT,
     FetchResult,
     detect_antibot,
+    extract_block_ids,
     extract_blocks,
     is_allowed_by_robots,
 )
@@ -20,7 +21,12 @@ from .utils import (
 logger = logging.getLogger("promo_monitor.scraper.js")
 
 
-def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) -> FetchResult:
+def fetch_js(
+    url: str,
+    selector: str,
+    cookies: Optional[Dict[str, str]] = None,
+    id_attr: Optional[str] = None,
+) -> FetchResult:
     if not is_allowed_by_robots(url):
         logger.warning("robots.txt запрещает доступ к %s — пропускаем", url)
         return FetchResult(status="robots_disallowed", error="Запрещено robots.txt")
@@ -58,7 +64,8 @@ def fetch_js(url: str, selector: str, cookies: Optional[Dict[str, str]] = None) 
             # (recaptcha, datadome...), которые легко встретить на совершенно
             # рабочей странице по не связанной с блокировкой причине (см. ниже).
             text, links = extract_blocks(blocks, final_url)
-            return FetchResult(status="ok", text=text, screenshot=screenshot, links=links)
+            ids = extract_block_ids(blocks, id_attr) if id_attr else None
+            return FetchResult(status="ok", text=text, screenshot=screenshot, links=links, ids=ids)
 
         # Пустой результат — тут уже стоит спросить detect_antibot, ПОЧЕМУ:
         # либо блок на этом прогоне отрисовался медленнее, чем wait_for_selector

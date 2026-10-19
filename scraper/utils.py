@@ -58,6 +58,7 @@ class FetchResult:
     error: Optional[str] = None
     screenshot: Optional[bytes] = None  # PNG промо-блока, только для render: js (см. js_fetcher.py)
     links: Optional[Dict[str, str]] = None  # строка акции -> ссылка на неё (см. extract_blocks)
+    ids: Optional[Dict[str, str]] = None  # строка акции -> id на сайте (см. extract_block_ids)
 
 
 def is_allowed_by_robots(url: str, user_agent: str = USER_AGENT) -> bool:
@@ -194,6 +195,22 @@ def extract_block_link(block, base_url: str) -> Optional[str]:
             continue
         return absolute
     return None
+
+
+def extract_block_ids(blocks, id_attr: str) -> Dict[str, str]:
+    """Карта "текст строки -> значение атрибута id_attr блока" (data-bonus-id и т.п.).
+
+    Нужна сайтам без URL у карточки: по id описание акции запрашивается
+    отдельно (см. scraper/details.py). Ключ тот же, что в extract_blocks."""
+    ids: Dict[str, str] = {}
+    for block in blocks:
+        value = block.get(id_attr) if hasattr(block, "get") else None
+        if not value:
+            continue
+        line = extract_block_text(block)
+        if line and line not in ids:
+            ids[line] = str(value).strip()
+    return ids
 
 
 def extract_blocks(blocks, base_url: str) -> Tuple[str, Dict[str, str]]:

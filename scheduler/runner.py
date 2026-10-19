@@ -17,6 +17,7 @@ import yaml
 
 from diff.differ import compute_hash, generate_diff
 from scraper.auth_session import parse_cookie_header, require_credentials
+from scraper.details import fetch_details
 from scraper.js_fetcher import fetch_js
 from scraper.static_fetcher import fetch_static
 from storage.db import (
@@ -136,8 +137,9 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
         row["new_text"] = str(exc)
         return row
 
+    details_cfg = site.get("details") or {}
     fetcher = fetch_js if render == "js" else fetch_static
-    result = fetcher(url, selector, cookies=cookies)
+    result = fetcher(url, selector, cookies=cookies, id_attr=details_cfg.get("id_attr"))
 
     if result.status != "ok":
         logger.warning("%s: %s (%s)", site_id, result.status, result.error)
@@ -147,6 +149,10 @@ def process_site(site: Dict[str, Any], db_path: Path) -> Dict[str, Any]:
 
     new_text = result.text
     new_links = result.links or {}
+    # Описания акций у сайтов без URL карточки (sites.yaml -> details). Не
+    # сохраняются в базе: нужны только текущему отчёту, а любая ошибка тут
+    # (fetch_details сам ничего не бросает) не должна влиять на сравнение.
+    row["new_details"] = fetch_details(result.ids or {}, details_cfg) if details_cfg else {}
     new_hash = compute_hash(new_text)
     last = get_last_snapshot(site_id, db_path)
 
